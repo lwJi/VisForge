@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from visforge.config import bool_value, load_config, range_value, section
 from visforge.workflows.inspect import format_summary, inspect_dataset
 from visforge.workflows.line_plot import make_line_plot
 from visforge.workflows.slice_plot import make_slice_plot
@@ -35,8 +36,9 @@ def _build_parser() -> argparse.ArgumentParser:
     line_parser.set_defaults(func=_plot_line)
 
     slice_parser = subparsers.add_parser("plot-slice", help="Plot an openPMD scalar slice")
-    slice_parser.add_argument("path", type=Path)
-    slice_parser.add_argument("--field", required=True)
+    slice_parser.add_argument("path", nargs="?", type=Path)
+    slice_parser.add_argument("--config", type=Path, help="YAML config file with plot-slice defaults")
+    slice_parser.add_argument("--field")
     slice_parser.add_argument("--iteration", type=int)
     slice_parser.add_argument("--plane", choices=("xy", "xz", "yz"))
     slice_parser.add_argument("--backend", default="auto", choices=("auto", "openpmd", "silo"))
@@ -48,13 +50,13 @@ def _build_parser() -> argparse.ArgumentParser:
     slice_parser.add_argument("--mesh-color", default="white", help="Mesh overlay color")
     slice_parser.add_argument(
         "--mesh-linewidth",
-        default=0.15,
+        default=None,
         type=float,
         help="Mesh overlay line width in points",
     )
     slice_parser.add_argument(
         "--mesh-alpha",
-        default=0.75,
+        default=None,
         type=float,
         help="Mesh overlay opacity from 0.0 to 1.0",
     )
@@ -77,7 +79,7 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar=("YMIN", "YMAX"),
         help="Visible y-axis range",
     )
-    slice_parser.add_argument("--output", required=True, type=Path)
+    slice_parser.add_argument("--output", type=Path)
     slice_parser.set_defaults(func=_plot_slice)
     return parser
 
@@ -101,23 +103,66 @@ def _plot_line(args: argparse.Namespace) -> int:
 
 
 def _plot_slice(args: argparse.Namespace) -> int:
+    options = _slice_options(args)
     result = make_slice_plot(
-        args.path,
-        field=args.field,
-        iteration=args.iteration,
-        plane=args.plane,
-        backend=args.backend,
-        output=args.output,
-        show_mesh=args.show_mesh,
-        mesh_color=args.mesh_color,
-        mesh_linewidth=args.mesh_linewidth,
-        mesh_alpha=args.mesh_alpha,
-        mesh_max_lines=args.mesh_max_lines,
-        xlim=_range_tuple(args.xlim),
-        ylim=_range_tuple(args.ylim),
+        options["path"],
+        field=options["field"],
+        iteration=options["iteration"],
+        plane=options["plane"],
+        backend=options["backend"],
+        output=options["output"],
+        show_mesh=options["show_mesh"],
+        mesh_color=options["mesh_color"],
+        mesh_linewidth=options["mesh_linewidth"],
+        mesh_alpha=options["mesh_alpha"],
+        mesh_max_lines=options["mesh_max_lines"],
+        xlim=options["xlim"],
+        ylim=options["ylim"],
     )
     print(f"Wrote {result.output}")
     return 0
+
+
+def _slice_options(args: argparse.Namespace) -> dict[str, object]:
+    config = load_config(args.config)
+    plot = section(config, "plot")
+    mesh = section(config, "mesh")
+    view = section(config, "view")
+
+    options = {
+        "path": args.path or config.get("dataset") or plot.get("dataset"),
+        "field": _choose(args.field, plot.get("field")),
+        "iteration": _choose(args.iteration, plot.get("iteration")),
+        "plane": _choose(args.plane, plot.get("plane")),
+        "backend": _choose(args.backend if args.backend != "auto" else None, plot.get("backend"), "auto"),
+        "output": _choose(args.output, plot.get("output")),
+        "show_mesh": bool_value(_choose(args.show_mesh if args.show_mesh else None, mesh.get("show"), False)),
+        "mesh_color": _choose(args.mesh_color if args.mesh_color != "white" else None, mesh.get("color"), "white"),
+        "mesh_linewidth": float(_choose(args.mesh_linewidth, mesh.get("linewidth"), 0.15)),
+        "mesh_alpha": float(_choose(args.mesh_alpha, mesh.get("alpha"), 0.75)),
+        "mesh_max_lines": _choose(args.mesh_max_lines, mesh.get("max_lines")),
+        "xlim": _choose(_range_tuple(args.xlim), range_value(view.get("xlim"))),
+        "ylim": _choose(_range_tuple(args.ylim), range_value(view.get("ylim"))),
+    }
+    missing = [name for name in ("path", "field", "output") if options[name] is None]
+    if missing:
+        raise SystemExit(f"plot-slice requires {', '.join(missing)} from CLI or config.")
+    if options["iteration"] is not None:
+        options["iteration"] = int(options["iteration"])
+    if options["mesh_max_lines"] is not None:
+        options["mesh_max_lines"] = int(options["mesh_max_lines"])
+    if options["path"] is not None:
+        options["path"] = Path(options["path"])
+    if options["output"] is not None:
+        options["output"] = Path(options["output"])
+    return options
+
+
+def _choose(*values):
+    for value in values:
+        if value is not None:
+            return value
+    return None
 
 
 def _range_tuple(values: list[float] | None) -> tuple[float, float] | None:

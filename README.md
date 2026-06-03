@@ -52,3 +52,19 @@ $HOME/Misc/venv/py3/bin/visforge plot-slice /Users/liwei/docker-workspace/data/T
   --ylim -4 4 \
   --output gfc_xy_mesh.png
 ```
+
+Use a YAML config file instead of passing every option on the command line:
+
+```bash
+$HOME/Misc/venv/py3/bin/visforge plot-slice --config examples/plot_slice.yaml
+```
+
+CLI options override values from the config file:
+
+```bash
+$HOME/Misc/venv/py3/bin/visforge plot-slice \
+  --config examples/plot_slice.yaml \
+  --xlim -2 2 \
+  --ylim -2 2 \
+  --output gfc_zoom.png
+```
