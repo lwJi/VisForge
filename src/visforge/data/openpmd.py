@@ -18,6 +18,10 @@ except ImportError:  # pragma: no cover
     io = None
 
 PATCH_LEVEL_RE = re.compile(r"^(?P<base>.+)_patch(?P<patch>\d+)_lev(?P<level>\d+)$")
+BOXINBOX_RADIUS_RE = re.compile(r"BoxInBox::radius_(?P<region>\d+)\s*=\s*\[(?P<values>[^\]]+)\]")
+CARPETX_BOUND_RE = re.compile(
+    r"CarpetX::(?P<axis>[xyz])(?P<side>min|max)\s*=\s*(?P<value>[+-]?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)"
+)
 
 
 class OpenPMDBackend:
@@ -31,6 +35,18 @@ class OpenPMDBackend:
         self._files = self.index.by_backend("openpmd")
         if not self._files:
             raise FileNotFoundError(f"No CarpetX openPMD .bp5 files found under {self.path}")
+        self._refinement_radii = _read_boxinbox_radii(self.path)
+        self._domain_bounds = _read_carpetx_domain_bounds(self.path)
+        if not self._refinement_radii:
+            for file in self._files:
+                self._refinement_radii = _read_boxinbox_radii(file.path)
+                if self._refinement_radii:
+                    break
+        if not self._domain_bounds:
+            for file in self._files:
+                self._domain_bounds = _read_carpetx_domain_bounds(file.path)
+                if self._domain_bounds:
+                    break
 
     def list_iterations(self) -> tuple[int, ...]:
         return tuple(sorted({file.iteration for file in self._files if file.iteration is not None}))
@@ -82,6 +98,8 @@ class OpenPMDBackend:
                     mesh,
                     mesh_name=mesh_name,
                     requested_plane=plane or file.plane,
+                    refinement_radii=self._refinement_radii,
+                    domain_bounds=self._domain_bounds,
                 )
                 blocks.append(block)
 
@@ -179,6 +197,8 @@ def _to_slice_block(
     *,
     mesh_name: str,
     requested_plane: str | None,
+    refinement_radii: tuple[float, ...],
+    domain_bounds: dict[str, tuple[float, float]],
 ) -> GridBlock:
     axis_labels = tuple(str(axis) for axis in getattr(mesh, "axis_labels", ()))
     spacing = tuple(float(value) for value in getattr(mesh, "grid_spacing", (1.0,) * array.ndim))
@@ -192,6 +212,16 @@ def _to_slice_block(
         requested_plane=requested_plane,
     )
     patch, level = _patch_and_level(mesh_name)
+    metadata = {"openpmd_mesh": mesh_name}
+    refinement_extent = _refinement_extent(
+        level=level,
+        axes=axes,
+        block_extent=_extent_from_block_values(data, block_origin, block_spacing),
+        radii=refinement_radii,
+        domain_bounds=domain_bounds,
+    )
+    if refinement_extent is not None:
+        metadata["refinement_extent"] = refinement_extent
     return GridBlock(
         data=data,
         axes=axes,
@@ -199,7 +229,7 @@ def _to_slice_block(
         spacing=block_spacing,
         patch=patch,
         level=level,
-        metadata={"openpmd_mesh": mesh_name},
+        metadata=metadata,
     )
 
 
@@ -260,3 +290,96 @@ def _patch_and_level(mesh_name: str) -> tuple[int | None, int | None]:
     if match is None:
         return None, None
     return int(match.group("patch")), int(match.group("level"))
+
+
+def _read_boxinbox_radii(path: Path) -> tuple[float, ...]:
+    for parfile in _candidate_parfiles(path):
+        text = parfile.read_text(encoding="utf-8")
+        match = BOXINBOX_RADIUS_RE.search(text)
+        if match is None:
+            continue
+        values = []
+        for value in match.group("values").split(","):
+            values.append(float(value.strip()))
+        return tuple(values)
+    return ()
+
+
+def _candidate_parfiles(path: Path) -> tuple[Path, ...]:
+    roots = [path if path.is_dir() else path.parent]
+    roots.extend(roots[0].parents[:4])
+    parfiles: list[Path] = []
+    for root in roots:
+        parfiles.extend(sorted(root.glob("*.par")))
+    return tuple(parfiles)
+
+
+def _extent_from_block_values(
+    data: np.ndarray,
+    origin: tuple[float, ...],
+    spacing: tuple[float, ...],
+) -> tuple[float, float, float, float]:
+    y_count, x_count = data.shape
+    y0, x0 = origin
+    dy, dx = spacing
+    return (x0, x0 + dx * x_count, y0, y0 + dy * y_count)
+
+
+def _refinement_extent(
+    *,
+    level: int | None,
+    axes: tuple[str, ...],
+    block_extent: tuple[float, float, float, float],
+    radii: tuple[float, ...],
+    domain_bounds: dict[str, tuple[float, float]],
+) -> tuple[float, float, float, float] | None:
+    if level == 0 and domain_bounds and len(axes) == 2:
+        return _axis_bounds_extent(axes, block_extent, domain_bounds)
+    if level is None or level >= len(radii):
+        return None
+    radius = radii[level]
+    if radius <= 0:
+        return block_extent
+
+    x0, x1, y0, y1 = block_extent
+    axis_limits = {
+        "x": (-radius, radius),
+        "y": (-radius, radius),
+        "z": (-radius, radius),
+    }
+    if len(axes) != 2:
+        return None
+    y_axis, x_axis = axes
+    rx0, rx1 = axis_limits.get(x_axis, (x0, x1))
+    ry0, ry1 = axis_limits.get(y_axis, (y0, y1))
+    return max(x0, rx0), min(x1, rx1), max(y0, ry0), min(y1, ry1)
+
+
+def _axis_bounds_extent(
+    axes: tuple[str, ...],
+    block_extent: tuple[float, float, float, float],
+    bounds: dict[str, tuple[float, float]],
+) -> tuple[float, float, float, float]:
+    x0, x1, y0, y1 = block_extent
+    y_axis, x_axis = axes
+    bx0, bx1 = bounds.get(x_axis, (x0, x1))
+    by0, by1 = bounds.get(y_axis, (y0, y1))
+    return max(x0, bx0), min(x1, bx1), max(y0, by0), min(y1, by1)
+
+
+def _read_carpetx_domain_bounds(path: Path) -> dict[str, tuple[float, float]]:
+    for parfile in _candidate_parfiles(path):
+        text = parfile.read_text(encoding="utf-8")
+        values: dict[str, dict[str, float]] = {}
+        for match in CARPETX_BOUND_RE.finditer(text):
+            axis = match.group("axis")
+            side = match.group("side")
+            values.setdefault(axis, {})[side] = float(match.group("value"))
+        bounds = {
+            axis: (sides["min"], sides["max"])
+            for axis, sides in values.items()
+            if "min" in sides and "max" in sides
+        }
+        if bounds:
+            return bounds
+    return {}

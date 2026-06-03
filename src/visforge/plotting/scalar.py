@@ -30,20 +30,23 @@ def plot_scalar_slice(
     show_mesh: bool = False,
     mesh_color: str = "white",
     mesh_linewidth: float = 0.8,
+    mesh_max_lines: int | None = None,
 ) -> PlotResult:
     """Plot one or more blocks from a scalar 2D slice."""
 
     configure_matplotlib_environment()
     import matplotlib.pyplot as plt
-    from matplotlib.patches import Rectangle
 
     figure, axes = plt.subplots(figsize=DEFAULT_FIGSIZE)
     image = None
+    plotted_blocks = tuple(sorted(data.blocks, key=lambda item: (item.level or 0, item.patch or 0)))
     limits = _color_limits(data.blocks, vmin=vmin, vmax=vmax)
-    for block in sorted(data.blocks, key=lambda item: (item.level or 0, item.patch or 0)):
-        extent = _extent(block)
+    for block in plotted_blocks:
+        block_data, extent = _valid_data_and_extent(block)
+        if block_data.size == 0:
+            continue
         image = axes.imshow(
-            _display_data(block.data, fill_value=limits[0]),
+            _display_data(block_data, fill_value=limits[0]),
             origin="lower",
             extent=extent,
             aspect="auto",
@@ -52,21 +55,16 @@ def plot_scalar_slice(
             vmax=limits[1],
             interpolation="nearest",
         )
-        if show_mesh:
-            x0, x1, y0, y1 = extent
-            axes.add_patch(
-                Rectangle(
-                    (x0, y0),
-                    x1 - x0,
-                    y1 - y0,
-                    fill=False,
-                    edgecolor=mesh_color,
-                    linewidth=mesh_linewidth,
-                    alpha=0.9,
-                )
-            )
     if image is None:
         raise ValueError("SliceData contains no blocks to plot.")
+    if show_mesh:
+        _draw_mesh_overlay(
+            axes,
+            plotted_blocks,
+            color=mesh_color,
+            linewidth=mesh_linewidth,
+            max_lines=mesh_max_lines,
+        )
 
     x_axis, y_axis = _plot_axes(data.blocks[0])
     axes.set_xlabel(x_axis)
@@ -85,10 +83,149 @@ def _extent(block: GridBlock) -> tuple[float, float, float, float]:
     return (x0, x0 + dx * x_count, y0, y0 + dy * y_count)
 
 
+def _valid_data_and_extent(block: GridBlock) -> tuple[np.ndarray, tuple[float, float, float, float]]:
+    extent = _mesh_extent(block)
+    y_slice, x_slice = _extent_slices(block, extent)
+    data = np.asarray(block.data)[y_slice, x_slice]
+    x0, _, y0, _ = extent
+    dy, dx = block.spacing
+    x_start = x_slice.start or 0
+    y_start = y_slice.start or 0
+    x_stop = x_slice.stop if x_slice.stop is not None else x_start + data.shape[1]
+    y_stop = y_slice.stop if y_slice.stop is not None else y_start + data.shape[0]
+    block_y0, block_x0 = block.origin
+    cropped_extent = (
+        block_x0 + dx * x_start,
+        block_x0 + dx * x_stop,
+        block_y0 + dy * y_start,
+        block_y0 + dy * y_stop,
+    )
+    if data.size == 0:
+        return data, extent
+    return data, _clip_extent(cropped_extent, extent)
+
+
+def _extent_slices(
+    block: GridBlock,
+    extent: tuple[float, float, float, float],
+) -> tuple[slice, slice]:
+    y_count, x_count = block.data.shape
+    y0, x0 = block.origin
+    dy, dx = block.spacing
+    ex0, ex1, ey0, ey1 = extent
+    x_start = max(0, int(np.ceil((ex0 - x0) / dx)))
+    x_stop = min(x_count, int(np.floor((ex1 - x0) / dx)))
+    y_start = max(0, int(np.ceil((ey0 - y0) / dy)))
+    y_stop = min(y_count, int(np.floor((ey1 - y0) / dy)))
+    return slice(y_start, y_stop), slice(x_start, x_stop)
+
+
+def _clip_extent(
+    candidate: tuple[float, float, float, float],
+    target: tuple[float, float, float, float],
+) -> tuple[float, float, float, float]:
+    x0, x1, y0, y1 = candidate
+    tx0, tx1, ty0, ty1 = target
+    return max(x0, tx0), min(x1, tx1), max(y0, ty0), min(y1, ty1)
+
+
 def _plot_axes(block: GridBlock) -> tuple[str, str]:
     if len(block.axes) >= 2:
         return block.axes[1], block.axes[0]
     return "x", "y"
+
+
+def _draw_mesh_overlay(
+    axes,
+    blocks: tuple[GridBlock, ...],
+    *,
+    color: str,
+    linewidth: float,
+    max_lines: int | None,
+) -> None:
+    from matplotlib import patheffects
+    from matplotlib.patches import Rectangle
+
+    path_effects = [
+        patheffects.Stroke(linewidth=linewidth + 1.2, foreground="black", alpha=0.55),
+        patheffects.Normal(),
+    ]
+    for block in blocks:
+        x0, x1, y0, y1 = _mesh_extent(block)
+        if x1 <= x0 or y1 <= y0:
+            continue
+        rectangle = Rectangle(
+            (x0, y0),
+            x1 - x0,
+            y1 - y0,
+            fill=False,
+            edgecolor=color,
+            linewidth=linewidth + 0.4,
+            alpha=0.95,
+            zorder=20,
+        )
+        rectangle.set_path_effects(path_effects)
+        axes.add_patch(rectangle)
+
+        xs, ys = _mesh_line_positions(block, extent=(x0, x1, y0, y1), max_lines=max_lines)
+        vlines = axes.vlines(
+            xs,
+            y0,
+            y1,
+            colors=color,
+            linewidth=linewidth,
+            alpha=0.75,
+            zorder=19,
+        )
+        hlines = axes.hlines(
+            ys,
+            x0,
+            x1,
+            colors=color,
+            linewidth=linewidth,
+            alpha=0.75,
+            zorder=19,
+        )
+        vlines.set_path_effects(path_effects)
+        hlines.set_path_effects(path_effects)
+
+
+def _mesh_extent(block: GridBlock) -> tuple[float, float, float, float]:
+    extent = block.metadata.get("refinement_extent")
+    if extent is None:
+        return _extent(block)
+    return tuple(float(value) for value in extent)
+
+
+def _mesh_line_positions(
+    block: GridBlock,
+    *,
+    extent: tuple[float, float, float, float],
+    max_lines: int | None,
+) -> tuple[np.ndarray, np.ndarray]:
+    y0, x0 = block.origin
+    dy, dx = block.spacing
+    ex0, ex1, ey0, ey1 = extent
+    y_slice, x_slice = _extent_slices(block, extent)
+    x_start = x_slice.start or 0
+    x_stop = x_slice.stop or x_start
+    y_start = y_slice.start or 0
+    y_stop = y_slice.stop or y_start
+    if max_lines is None or max_lines <= 0:
+        x_step = 1
+        y_step = 1
+    else:
+        x_step = max(1, int(np.ceil(max(1, x_stop - x_start) / max_lines)))
+        y_step = max(1, int(np.ceil(max(1, y_stop - y_start) / max_lines)))
+    xs = x0 + dx * np.arange(x_start, x_stop + 1, x_step)
+    ys = y0 + dy * np.arange(y_start, y_stop + 1, y_step)
+    return _ensure_endpoint(xs, ex1), _ensure_endpoint(ys, ey1)
+
+
+def _ensure_endpoint(values: np.ndarray, endpoint: float) -> np.ndarray:
+    if values.size == 0 or not np.isclose(values[-1], endpoint):
+        return np.append(values, endpoint)
+    return values
 
 
 def _color_limits(
@@ -99,7 +236,10 @@ def _color_limits(
 ) -> tuple[float | None, float | None]:
     if vmin is not None or vmax is not None:
         return vmin, vmax
-    arrays = [np.asarray(block.data, dtype=float).ravel() for block in blocks]
+    arrays = [np.asarray(_valid_data_and_extent(block)[0], dtype=float).ravel() for block in blocks]
+    arrays = [array for array in arrays if array.size]
+    if not arrays:
+        return None, None
     finite = np.concatenate(arrays)
     finite = finite[np.isfinite(finite)]
     finite = finite[np.abs(finite) < DEFAULT_EXTREME_VALUE_LIMIT]

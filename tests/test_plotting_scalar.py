@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 
 from visforge.data.model import FieldInfo, GridBlock, SliceData
-from visforge.plotting.scalar import plot_scalar_slice
+from visforge.plotting.scalar import _mesh_line_positions, _valid_data_and_extent, plot_scalar_slice
 
 
 def test_plot_scalar_slice_writes_png(tmp_path: Path) -> None:
@@ -43,7 +43,43 @@ def test_plot_scalar_slice_can_overlay_mesh(tmp_path: Path) -> None:
         blocks=(block,),
     )
     output = tmp_path / "slice_mesh.png"
-    result = plot_scalar_slice(slice_data, output=output, show_mesh=True)
+    result = plot_scalar_slice(
+        slice_data,
+        output=output,
+        show_mesh=True,
+        mesh_linewidth=1.25,
+    )
     assert result.output == output.resolve()
     assert output.stat().st_size > 0
     assert len(result.axes.patches) == 1
+    assert len(result.axes.collections) == 2
+
+
+def test_mesh_line_positions_use_real_cell_spacing() -> None:
+    block = GridBlock(
+        data=np.zeros((2, 3), dtype=float),
+        axes=("z", "x"),
+        origin=(-1.0, 2.0),
+        spacing=(0.5, 0.25),
+    )
+    xs, ys = _mesh_line_positions(block, extent=(2.0, 2.75, -1.0, 0.0), max_lines=None)
+    assert xs.tolist() == [2.0, 2.25, 2.5, 2.75]
+    assert ys.tolist() == [-1.0, -0.5, 0.0]
+
+
+def test_valid_data_and_extent_crops_to_refinement_region() -> None:
+    block = GridBlock(
+        data=np.arange(25, dtype=float).reshape(5, 5),
+        axes=("z", "x"),
+        origin=(-2.0, -2.0),
+        spacing=(1.0, 1.0),
+        metadata={"refinement_extent": (-1.0, 2.0, -1.0, 2.0)},
+    )
+    data, extent = _valid_data_and_extent(block)
+    assert data.shape == (3, 3)
+    assert data.tolist() == [
+        [6.0, 7.0, 8.0],
+        [11.0, 12.0, 13.0],
+        [16.0, 17.0, 18.0],
+    ]
+    assert extent == (-1.0, 2.0, -1.0, 2.0)

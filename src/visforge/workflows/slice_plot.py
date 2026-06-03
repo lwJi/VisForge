@@ -18,7 +18,17 @@ def make_slice_plot(
     backend: str = "auto",
     output: str | Path | None = None,
     show_mesh: bool = False,
+    mesh_color: str = "white",
+    mesh_linewidth: float = 0.8,
+    mesh_max_lines: int | None = None,
 ) -> PlotResult:
     dataset = open_dataset(path, backend=backend)
     slice_data = dataset.read_slice(field, iteration=iteration, plane=plane)
-    return plot_scalar_slice(slice_data, output=output, show_mesh=show_mesh)
+    return plot_scalar_slice(
+        slice_data,
+        output=output,
+        show_mesh=show_mesh,
+        mesh_color=mesh_color,
+        mesh_linewidth=mesh_linewidth,
+        mesh_max_lines=mesh_max_lines,
+    )

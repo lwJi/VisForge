@@ -47,5 +47,6 @@ $HOME/Misc/venv/py3/bin/visforge plot-slice /Users/liwei/docker-workspace/data/T
   --plane xy \
   --backend openpmd \
   --show-mesh \
+  --mesh-linewidth 0.5 \
   --output gfc_xy_mesh.png
 ```

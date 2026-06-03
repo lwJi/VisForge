@@ -43,7 +43,19 @@ def _build_parser() -> argparse.ArgumentParser:
     slice_parser.add_argument(
         "--show-mesh",
         action="store_true",
-        help="Overlay mesh/block outlines on the scalar slice plot",
+        help="Overlay cell-boundary mesh lines and block outlines on the scalar slice plot",
+    )
+    slice_parser.add_argument("--mesh-color", default="white", help="Mesh overlay color")
+    slice_parser.add_argument(
+        "--mesh-linewidth",
+        default=0.8,
+        type=float,
+        help="Mesh overlay line width in points",
+    )
+    slice_parser.add_argument(
+        "--mesh-max-lines",
+        type=int,
+        help="Decimate mesh overlay to at most this many lines per axis and block",
     )
     slice_parser.add_argument("--output", required=True, type=Path)
     slice_parser.set_defaults(func=_plot_slice)
@@ -77,6 +89,9 @@ def _plot_slice(args: argparse.Namespace) -> int:
         backend=args.backend,
         output=args.output,
         show_mesh=args.show_mesh,
+        mesh_color=args.mesh_color,
+        mesh_linewidth=args.mesh_linewidth,
+        mesh_max_lines=args.mesh_max_lines,
     )
     print(f"Wrote {result.output}")
     return 0
