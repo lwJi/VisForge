@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "visforge"
+version = "0.1.0"
+description = "Small modular tools for visualizing CarpetX simulation output."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "matplotlib",
+  "numpy",
+  "PyYAML",
+]
+
+[project.optional-dependencies]
+openpmd = ["openPMD-api"]
+test = ["pytest"]
+
+[project.scripts]
+visforge = "visforge.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+markers = [
+  "integration: tests that require external CarpetX example datasets",
+]
