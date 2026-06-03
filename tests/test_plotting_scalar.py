@@ -26,6 +26,8 @@ def test_plot_scalar_slice_writes_png(tmp_path: Path) -> None:
     result = plot_scalar_slice(slice_data, output=output)
     assert result.output == output.resolve()
     assert output.stat().st_size > 0
+    assert result.axes.get_xlabel() == r"$x$"
+    assert result.axes.get_ylabel() == r"$y$"
 
 
 def test_plot_scalar_slice_can_overlay_mesh(tmp_path: Path) -> None:
@@ -48,6 +50,7 @@ def test_plot_scalar_slice_can_overlay_mesh(tmp_path: Path) -> None:
         output=output,
         show_mesh=True,
         mesh_linewidth=1.25,
+        mesh_alpha=0.4,
     )
     assert result.output == output.resolve()
     assert output.stat().st_size > 0
@@ -55,6 +58,10 @@ def test_plot_scalar_slice_can_overlay_mesh(tmp_path: Path) -> None:
     assert len(result.axes.collections) == 2
     assert result.axes.patches[0].get_linewidth() == 1.25
     assert result.axes.collections[0].get_linewidths().tolist() == [1.25]
+    assert result.axes.patches[0].get_alpha() == 0.4
+    assert result.axes.collections[0].get_alpha() == 0.4
+    assert result.axes.patches[0].get_path_effects() == []
+    assert result.axes.collections[0].get_path_effects() in (None, [])
 
 
 def test_mesh_line_positions_use_real_cell_spacing() -> None:

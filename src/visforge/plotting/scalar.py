@@ -12,8 +12,10 @@ from visforge.plotting.output import save_figure
 from visforge.plotting.style import (
     DEFAULT_CMAP,
     DEFAULT_FIGSIZE,
-    configure_matplotlib_environment,
+    axis_label,
+    configure_matplotlib_style,
     field_label,
+    plane_label,
 )
 
 DEFAULT_EXTREME_VALUE_LIMIT = 1.0e100
@@ -29,12 +31,13 @@ def plot_scalar_slice(
     vmax: float | None = None,
     show_mesh: bool = False,
     mesh_color: str = "white",
-    mesh_linewidth: float = 0.8,
+    mesh_linewidth: float = 0.15,
+    mesh_alpha: float = 0.75,
     mesh_max_lines: int | None = None,
 ) -> PlotResult:
     """Plot one or more blocks from a scalar 2D slice."""
 
-    configure_matplotlib_environment()
+    configure_matplotlib_style()
     import matplotlib.pyplot as plt
 
     figure, axes = plt.subplots(figsize=DEFAULT_FIGSIZE)
@@ -63,12 +66,13 @@ def plot_scalar_slice(
             plotted_blocks,
             color=mesh_color,
             linewidth=mesh_linewidth,
+            alpha=mesh_alpha,
             max_lines=mesh_max_lines,
         )
 
     x_axis, y_axis = _plot_axes(data.blocks[0])
-    axes.set_xlabel(x_axis)
-    axes.set_ylabel(y_axis)
+    axes.set_xlabel(axis_label(x_axis))
+    axes.set_ylabel(axis_label(y_axis))
     axes.set_title(title or _slice_title(data))
     figure.colorbar(image, ax=axes, label=field_label(data.field.name, data.field.units))
 
@@ -141,16 +145,12 @@ def _draw_mesh_overlay(
     *,
     color: str,
     linewidth: float,
+    alpha: float,
     max_lines: int | None,
 ) -> None:
-    from matplotlib import patheffects
     from matplotlib.patches import Rectangle
 
-    halo_width = linewidth * 1.8
-    path_effects = [
-        patheffects.Stroke(linewidth=halo_width, foreground="black", alpha=0.45),
-        patheffects.Normal(),
-    ]
+    alpha = _clamp_alpha(alpha)
     for block in blocks:
         x0, x1, y0, y1 = _mesh_extent(block)
         if x1 <= x0 or y1 <= y0:
@@ -162,10 +162,9 @@ def _draw_mesh_overlay(
             fill=False,
             edgecolor=color,
             linewidth=linewidth,
-            alpha=0.95,
+            alpha=alpha,
             zorder=20,
         )
-        rectangle.set_path_effects(path_effects)
         axes.add_patch(rectangle)
 
         xs, ys = _mesh_line_positions(block, extent=(x0, x1, y0, y1), max_lines=max_lines)
@@ -175,7 +174,7 @@ def _draw_mesh_overlay(
             y1,
             colors=color,
             linewidth=linewidth,
-            alpha=0.75,
+            alpha=alpha,
             zorder=19,
         )
         hlines = axes.hlines(
@@ -184,11 +183,13 @@ def _draw_mesh_overlay(
             x1,
             colors=color,
             linewidth=linewidth,
-            alpha=0.75,
+            alpha=alpha,
             zorder=19,
         )
-        vlines.set_path_effects(path_effects)
-        hlines.set_path_effects(path_effects)
+
+
+def _clamp_alpha(alpha: float) -> float:
+    return min(1.0, max(0.0, float(alpha)))
 
 
 def _mesh_extent(block: GridBlock) -> tuple[float, float, float, float]:
@@ -257,6 +258,8 @@ def _display_data(data: np.ndarray, *, fill_value: float | None):
 
 
 def _slice_title(data: SliceData) -> str:
+    label = field_label(data.field.name, data.field.units)
+    plane = plane_label(data.plane)
     if data.time is None:
-        return f"{data.field.name} {data.plane}, iteration {data.iteration}"
-    return f"{data.field.name} {data.plane}, iteration {data.iteration}, t={data.time:g}"
+        return f"{label} {plane}, iteration {data.iteration}"
+    return f"{label} {plane}, iteration {data.iteration}, $t={data.time:g}$"

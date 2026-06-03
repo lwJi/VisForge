@@ -19,7 +19,8 @@ def make_slice_plot(
     output: str | Path | None = None,
     show_mesh: bool = False,
     mesh_color: str = "white",
-    mesh_linewidth: float = 0.8,
+    mesh_linewidth: float = 0.15,
+    mesh_alpha: float = 0.75,
     mesh_max_lines: int | None = None,
 ) -> PlotResult:
     dataset = open_dataset(path, backend=backend)
@@ -30,5 +31,6 @@ def make_slice_plot(
         show_mesh=show_mesh,
         mesh_color=mesh_color,
         mesh_linewidth=mesh_linewidth,
+        mesh_alpha=mesh_alpha,
         mesh_max_lines=mesh_max_lines,
     )

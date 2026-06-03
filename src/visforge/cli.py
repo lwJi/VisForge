@@ -48,9 +48,15 @@ def _build_parser() -> argparse.ArgumentParser:
     slice_parser.add_argument("--mesh-color", default="white", help="Mesh overlay color")
     slice_parser.add_argument(
         "--mesh-linewidth",
-        default=0.8,
+        default=0.15,
         type=float,
         help="Mesh overlay line width in points",
+    )
+    slice_parser.add_argument(
+        "--mesh-alpha",
+        default=0.75,
+        type=float,
+        help="Mesh overlay opacity from 0.0 to 1.0",
     )
     slice_parser.add_argument(
         "--mesh-max-lines",
@@ -91,6 +97,7 @@ def _plot_slice(args: argparse.Namespace) -> int:
         show_mesh=args.show_mesh,
         mesh_color=args.mesh_color,
         mesh_linewidth=args.mesh_linewidth,
+        mesh_alpha=args.mesh_alpha,
         mesh_max_lines=args.mesh_max_lines,
     )
     print(f"Wrote {result.output}")

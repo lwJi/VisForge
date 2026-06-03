@@ -7,7 +7,12 @@ from pathlib import Path
 from visforge.data.model import LineData
 from visforge.plotting.base import PlotResult
 from visforge.plotting.output import save_figure
-from visforge.plotting.style import LINE_FIGSIZE, configure_matplotlib_environment, field_label
+from visforge.plotting.style import (
+    LINE_FIGSIZE,
+    axis_label,
+    configure_matplotlib_style,
+    field_label,
+)
 
 
 def plot_line(
@@ -19,12 +24,12 @@ def plot_line(
 ) -> PlotResult:
     """Plot a scalar line output."""
 
-    configure_matplotlib_environment()
+    configure_matplotlib_style()
     import matplotlib.pyplot as plt
 
     figure, axes = plt.subplots(figsize=LINE_FIGSIZE)
     axes.plot(line.coordinate, line.values, color=color, linewidth=1.5)
-    axes.set_xlabel(line.axis)
+    axes.set_xlabel(axis_label(line.axis))
     axes.set_ylabel(field_label(line.field.name, line.field.units))
     axes.grid(True, color="0.85", linewidth=0.8)
     axes.set_title(title or _line_title(line))
@@ -34,6 +39,8 @@ def plot_line(
 
 
 def _line_title(line: LineData) -> str:
+    label = field_label(line.field.name, line.field.units)
+    axis = axis_label(line.axis)
     if line.time is None:
-        return f"{line.field.name} along {line.axis}, iteration {line.iteration}"
-    return f"{line.field.name} along {line.axis}, iteration {line.iteration}, t={line.time:g}"
+        return f"{label} along {axis}, iteration {line.iteration}"
+    return f"{label} along {axis}, iteration {line.iteration}, $t={line.time:g}$"
