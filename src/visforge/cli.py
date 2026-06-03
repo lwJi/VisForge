@@ -63,6 +63,20 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         help="Decimate mesh overlay to at most this many lines per axis and block",
     )
+    slice_parser.add_argument(
+        "--xlim",
+        nargs=2,
+        type=float,
+        metavar=("XMIN", "XMAX"),
+        help="Visible x-axis range",
+    )
+    slice_parser.add_argument(
+        "--ylim",
+        nargs=2,
+        type=float,
+        metavar=("YMIN", "YMAX"),
+        help="Visible y-axis range",
+    )
     slice_parser.add_argument("--output", required=True, type=Path)
     slice_parser.set_defaults(func=_plot_slice)
     return parser
@@ -99,9 +113,18 @@ def _plot_slice(args: argparse.Namespace) -> int:
         mesh_linewidth=args.mesh_linewidth,
         mesh_alpha=args.mesh_alpha,
         mesh_max_lines=args.mesh_max_lines,
+        xlim=_range_tuple(args.xlim),
+        ylim=_range_tuple(args.ylim),
     )
     print(f"Wrote {result.output}")
     return 0
+
+
+def _range_tuple(values: list[float] | None) -> tuple[float, float] | None:
+    if values is None:
+        return None
+    start, stop = values
+    return start, stop
 
 
 if __name__ == "__main__":  # pragma: no cover

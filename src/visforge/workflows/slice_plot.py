@@ -22,6 +22,8 @@ def make_slice_plot(
     mesh_linewidth: float = 0.15,
     mesh_alpha: float = 0.75,
     mesh_max_lines: int | None = None,
+    xlim: tuple[float, float] | None = None,
+    ylim: tuple[float, float] | None = None,
 ) -> PlotResult:
     dataset = open_dataset(path, backend=backend)
     slice_data = dataset.read_slice(field, iteration=iteration, plane=plane)
@@ -33,4 +35,6 @@ def make_slice_plot(
         mesh_linewidth=mesh_linewidth,
         mesh_alpha=mesh_alpha,
         mesh_max_lines=mesh_max_lines,
+        xlim=xlim,
+        ylim=ylim,
     )

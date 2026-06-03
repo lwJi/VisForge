@@ -34,6 +34,8 @@ def plot_scalar_slice(
     mesh_linewidth: float = 0.15,
     mesh_alpha: float = 0.75,
     mesh_max_lines: int | None = None,
+    xlim: tuple[float, float] | None = None,
+    ylim: tuple[float, float] | None = None,
 ) -> PlotResult:
     """Plot one or more blocks from a scalar 2D slice."""
 
@@ -73,6 +75,10 @@ def plot_scalar_slice(
     x_axis, y_axis = _plot_axes(data.blocks[0])
     axes.set_xlabel(axis_label(x_axis))
     axes.set_ylabel(axis_label(y_axis))
+    if xlim is not None:
+        axes.set_xlim(xlim)
+    if ylim is not None:
+        axes.set_ylim(ylim)
     axes.set_title(title or _slice_title(data))
     figure.colorbar(image, ax=axes, label=field_label(data.field.name, data.field.units))
 
