@@ -146,8 +146,9 @@ def _draw_mesh_overlay(
     from matplotlib import patheffects
     from matplotlib.patches import Rectangle
 
+    halo_width = linewidth * 1.8
     path_effects = [
-        patheffects.Stroke(linewidth=linewidth + 1.2, foreground="black", alpha=0.55),
+        patheffects.Stroke(linewidth=halo_width, foreground="black", alpha=0.45),
         patheffects.Normal(),
     ]
     for block in blocks:
@@ -160,7 +161,7 @@ def _draw_mesh_overlay(
             y1 - y0,
             fill=False,
             edgecolor=color,
-            linewidth=linewidth + 0.4,
+            linewidth=linewidth,
             alpha=0.95,
             zorder=20,
         )

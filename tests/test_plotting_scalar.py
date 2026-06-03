@@ -53,6 +53,8 @@ def test_plot_scalar_slice_can_overlay_mesh(tmp_path: Path) -> None:
     assert output.stat().st_size > 0
     assert len(result.axes.patches) == 1
     assert len(result.axes.collections) == 2
+    assert result.axes.patches[0].get_linewidth() == 1.25
+    assert result.axes.collections[0].get_linewidths().tolist() == [1.25]
 
 
 def test_mesh_line_positions_use_real_cell_spacing() -> None:
