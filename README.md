@@ -14,6 +14,15 @@ $HOME/Misc/venv/py3/bin/python -m pytest
 
 ## Example Commands
 
+List available commands and options:
+
+```bash
+$HOME/Misc/venv/py3/bin/visforge --help
+$HOME/Misc/venv/py3/bin/visforge inspect --help
+$HOME/Misc/venv/py3/bin/visforge plot-line --help
+$HOME/Misc/venv/py3/bin/visforge plot-slice --help
+```
+
 Inspect a CarpetX output tree:
 
 ```bash
