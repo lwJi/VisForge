@@ -27,26 +27,44 @@ def plot_scalar_slice(
     cmap: str = DEFAULT_CMAP,
     vmin: float | None = None,
     vmax: float | None = None,
+    show_mesh: bool = False,
+    mesh_color: str = "white",
+    mesh_linewidth: float = 0.8,
 ) -> PlotResult:
     """Plot one or more blocks from a scalar 2D slice."""
 
     configure_matplotlib_environment()
     import matplotlib.pyplot as plt
+    from matplotlib.patches import Rectangle
 
     figure, axes = plt.subplots(figsize=DEFAULT_FIGSIZE)
     image = None
     limits = _color_limits(data.blocks, vmin=vmin, vmax=vmax)
     for block in sorted(data.blocks, key=lambda item: (item.level or 0, item.patch or 0)):
+        extent = _extent(block)
         image = axes.imshow(
             _display_data(block.data, fill_value=limits[0]),
             origin="lower",
-            extent=_extent(block),
+            extent=extent,
             aspect="auto",
             cmap=cmap,
             vmin=limits[0],
             vmax=limits[1],
             interpolation="nearest",
         )
+        if show_mesh:
+            x0, x1, y0, y1 = extent
+            axes.add_patch(
+                Rectangle(
+                    (x0, y0),
+                    x1 - x0,
+                    y1 - y0,
+                    fill=False,
+                    edgecolor=mesh_color,
+                    linewidth=mesh_linewidth,
+                    alpha=0.9,
+                )
+            )
     if image is None:
         raise ValueError("SliceData contains no blocks to plot.")
 

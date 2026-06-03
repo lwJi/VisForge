@@ -40,6 +40,11 @@ def _build_parser() -> argparse.ArgumentParser:
     slice_parser.add_argument("--iteration", type=int)
     slice_parser.add_argument("--plane", choices=("xy", "xz", "yz"))
     slice_parser.add_argument("--backend", default="auto", choices=("auto", "openpmd", "silo"))
+    slice_parser.add_argument(
+        "--show-mesh",
+        action="store_true",
+        help="Overlay mesh/block outlines on the scalar slice plot",
+    )
     slice_parser.add_argument("--output", required=True, type=Path)
     slice_parser.set_defaults(func=_plot_slice)
     return parser
@@ -71,6 +76,7 @@ def _plot_slice(args: argparse.Namespace) -> int:
         plane=args.plane,
         backend=args.backend,
         output=args.output,
+        show_mesh=args.show_mesh,
     )
     print(f"Wrote {result.output}")
     return 0

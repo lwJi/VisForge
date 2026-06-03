@@ -26,3 +26,24 @@ def test_plot_scalar_slice_writes_png(tmp_path: Path) -> None:
     result = plot_scalar_slice(slice_data, output=output)
     assert result.output == output.resolve()
     assert output.stat().st_size > 0
+
+
+def test_plot_scalar_slice_can_overlay_mesh(tmp_path: Path) -> None:
+    block = GridBlock(
+        data=np.arange(4, dtype=float).reshape(2, 2),
+        axes=("y", "x"),
+        origin=(-1.0, 2.0),
+        spacing=(0.5, 0.25),
+    )
+    slice_data = SliceData(
+        field=FieldInfo(name="rho"),
+        iteration=0,
+        time=0.0,
+        plane="xy",
+        blocks=(block,),
+    )
+    output = tmp_path / "slice_mesh.png"
+    result = plot_scalar_slice(slice_data, output=output, show_mesh=True)
+    assert result.output == output.resolve()
+    assert output.stat().st_size > 0
+    assert len(result.axes.patches) == 1
