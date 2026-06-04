@@ -41,11 +41,13 @@ def plot_scalar_slice(
 
     configure_matplotlib_style()
     import matplotlib.pyplot as plt
+    from matplotlib.colors import Normalize
 
     figure, axes = plt.subplots(figsize=DEFAULT_FIGSIZE)
     image = None
     plotted_blocks = tuple(sorted(data.blocks, key=lambda item: (item.level or 0, item.patch or 0)))
     limits = _color_limits(data.blocks, vmin=vmin, vmax=vmax)
+    norm = Normalize(vmin=limits[0], vmax=limits[1])
     for block in plotted_blocks:
         block_data, extent = _valid_data_and_extent(block)
         if block_data.size == 0:
@@ -56,8 +58,7 @@ def plot_scalar_slice(
             extent=extent,
             aspect="equal",
             cmap=cmap,
-            vmin=limits[0],
-            vmax=limits[1],
+            norm=norm,
             interpolation="nearest",
         )
     if image is None:
@@ -91,7 +92,11 @@ def _extent(block: GridBlock) -> tuple[float, float, float, float]:
     y_count, x_count = block.data.shape
     y0, x0 = block.origin
     dy, dx = block.spacing
-    return (x0, x0 + dx * x_count, y0, y0 + dy * y_count)
+    y_position, x_position = _grid_position(block)
+    return (
+        *_axis_extent(x0, dx, 0, x_count, x_position),
+        *_axis_extent(y0, dy, 0, y_count, y_position),
+    )
 
 
 def _valid_data_and_extent(block: GridBlock) -> tuple[np.ndarray, tuple[float, float, float, float]]:
@@ -105,11 +110,11 @@ def _valid_data_and_extent(block: GridBlock) -> tuple[np.ndarray, tuple[float, f
     x_stop = x_slice.stop if x_slice.stop is not None else x_start + data.shape[1]
     y_stop = y_slice.stop if y_slice.stop is not None else y_start + data.shape[0]
     block_y0, block_x0 = block.origin
+    block_dy, block_dx = block.spacing
+    block_y_position, block_x_position = _grid_position(block)
     cropped_extent = (
-        block_x0 + dx * x_start,
-        block_x0 + dx * x_stop,
-        block_y0 + dy * y_start,
-        block_y0 + dy * y_stop,
+        *_axis_extent(block_x0, block_dx, x_start, x_stop, block_x_position),
+        *_axis_extent(block_y0, block_dy, y_start, y_stop, block_y_position),
     )
     if data.size == 0:
         return data, extent
@@ -124,11 +129,65 @@ def _extent_slices(
     y0, x0 = block.origin
     dy, dx = block.spacing
     ex0, ex1, ey0, ey1 = extent
-    x_start = max(0, int(np.ceil((ex0 - x0) / dx)))
-    x_stop = min(x_count, int(np.floor((ex1 - x0) / dx)))
-    y_start = max(0, int(np.ceil((ey0 - y0) / dy)))
-    y_stop = min(y_count, int(np.floor((ey1 - y0) / dy)))
+    y_position, x_position = _grid_position(block)
+    x_start, x_stop = _axis_extent_slice(
+        origin=x0,
+        spacing=dx,
+        count=x_count,
+        position=x_position,
+        lower=ex0,
+        upper=ex1,
+    )
+    y_start, y_stop = _axis_extent_slice(
+        origin=y0,
+        spacing=dy,
+        count=y_count,
+        position=y_position,
+        lower=ey0,
+        upper=ey1,
+    )
     return slice(y_start, y_stop), slice(x_start, x_stop)
+
+
+def _grid_position(block: GridBlock) -> tuple[float, float]:
+    position = block.metadata.get("grid_position")
+    if position is None:
+        return (0.5, 0.5)
+    if len(position) < 2:
+        return (0.5, 0.5)
+    return float(position[0]), float(position[1])
+
+
+def _axis_extent_slice(
+    *,
+    origin: float,
+    spacing: float,
+    count: int,
+    position: float,
+    lower: float,
+    upper: float,
+) -> tuple[int, int]:
+    point_origin = origin + position * spacing
+    start = int(np.ceil((lower - point_origin) / spacing))
+    stop = int(np.floor((upper - point_origin) / spacing)) + 1
+    return max(0, start), min(count, stop)
+
+
+def _axis_extent(
+    origin: float,
+    spacing: float,
+    start: int,
+    stop: int,
+    position: float,
+) -> tuple[float, float]:
+    if stop <= start:
+        edge = origin + (start + position) * spacing
+        return edge, edge
+    first = origin + (start + position) * spacing
+    last = origin + (stop - 1 + position) * spacing
+    if np.isclose(position, 0.0) or np.isclose(position, 1.0):
+        return first, last
+    return first - 0.5 * spacing, last + 0.5 * spacing
 
 
 def _clip_extent(
@@ -243,18 +302,42 @@ def _color_limits(
     vmin: float | None,
     vmax: float | None,
 ) -> tuple[float | None, float | None]:
-    if vmin is not None or vmax is not None:
-        return vmin, vmax
     arrays = [np.asarray(_valid_data_and_extent(block)[0], dtype=float).ravel() for block in blocks]
     arrays = [array for array in arrays if array.size]
     if not arrays:
-        return None, None
+        return _fallback_color_limits(vmin, vmax)
     finite = np.concatenate(arrays)
     finite = finite[np.isfinite(finite)]
     finite = finite[np.abs(finite) < DEFAULT_EXTREME_VALUE_LIMIT]
     if finite.size == 0:
-        return None, None
-    return float(np.nanpercentile(finite, 1)), float(np.nanpercentile(finite, 99))
+        return _fallback_color_limits(vmin, vmax)
+    lower = float(np.nanpercentile(finite, 1)) if vmin is None else vmin
+    upper = float(np.nanpercentile(finite, 99)) if vmax is None else vmax
+    return _expand_degenerate_limits(lower, upper)
+
+
+def _expand_degenerate_limits(
+    vmin: float | None,
+    vmax: float | None,
+) -> tuple[float | None, float | None]:
+    if vmin is None or vmax is None:
+        return vmin, vmax
+    lower = float(vmin)
+    upper = float(vmax)
+    if not np.isclose(lower, upper):
+        return lower, upper
+    half_width = abs(lower) * 0.01 if lower != 0.0 else 0.1
+    return lower - half_width, upper + half_width
+
+
+def _fallback_color_limits(
+    vmin: float | None,
+    vmax: float | None,
+) -> tuple[float | None, float | None]:
+    if vmin is None and vmax is None:
+        return _expand_degenerate_limits(0.0, 0.0)
+    value = vmax if vmin is None else vmin
+    return _expand_degenerate_limits(value, value)
 
 
 def _display_data(data: np.ndarray, *, fill_value: float | None):
