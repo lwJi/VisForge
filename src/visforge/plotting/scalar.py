@@ -54,7 +54,7 @@ def plot_scalar_slice(
             _display_data(block_data, fill_value=limits[0]),
             origin="lower",
             extent=extent,
-            aspect="auto",
+            aspect="equal",
             cmap=cmap,
             vmin=limits[0],
             vmax=limits[1],
@@ -79,6 +79,7 @@ def plot_scalar_slice(
         axes.set_xlim(xlim)
     if ylim is not None:
         axes.set_ylim(ylim)
+    axes.set_aspect("equal", adjustable="box")
     axes.set_title(title or _slice_title(data))
     figure.colorbar(image, ax=axes, label=field_label(data.field.name, data.field.units))
 

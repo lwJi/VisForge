@@ -28,6 +28,7 @@ def test_plot_scalar_slice_writes_png(tmp_path: Path) -> None:
     assert output.stat().st_size > 0
     assert result.axes.get_xlabel() == r"$x$"
     assert result.axes.get_ylabel() == r"$y$"
+    assert result.axes.get_aspect() == 1.0
 
 
 def test_plot_scalar_slice_applies_axis_ranges(tmp_path: Path) -> None:
