@@ -109,10 +109,10 @@ def _sample_block(
         raise ValueError("User-defined plane interpolation requires 3D GridBlock data.")
     axis_indices = _axis_indices(block.axes)
     coordinates = np.column_stack([points[:, axis_indices[axis]] for axis in block.axes])
-    origin = np.asarray(block.origin, dtype=float)
     spacing = np.asarray(block.spacing, dtype=float)
     if np.any(spacing == 0.0):
         raise ValueError("Cannot interpolate a block with zero grid spacing.")
+    origin = _grid_point_origin(block, spacing)
     indices = (coordinates - origin) / spacing
     if interpolation == "nearest":
         values, mask = _nearest(block.data, indices)
@@ -128,6 +128,20 @@ def _axis_indices(axes: tuple[str, ...]) -> dict[str, int]:
     if missing:
         raise ValueError(f"Cannot map block axes {axes!r} onto x/y/z coordinates.")
     return AXIS_INDEX
+
+
+def _grid_point_origin(block: GridBlock, spacing: NDArray[np.float64]) -> NDArray[np.float64]:
+    origin = np.asarray(block.origin, dtype=float)
+    grid_position = block.metadata.get("grid_position")
+    if grid_position is None:
+        return origin
+
+    position = np.asarray(grid_position, dtype=float)
+    if position.shape != origin.shape:
+        raise ValueError(
+            f"GridBlock grid_position {tuple(position)!r} does not match origin shape {tuple(origin.shape)!r}."
+        )
+    return origin + position * spacing
 
 
 def _refinement_mask(block: GridBlock, points: NDArray[np.float64]) -> NDArray[np.bool_]:

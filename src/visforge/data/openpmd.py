@@ -103,6 +103,7 @@ class OpenPMDBackend:
                 block = _to_slice_block(
                     array,
                     mesh,
+                    record_component,
                     mesh_name=mesh_name,
                     requested_plane=plane or file.plane,
                     refinement_radii=self._refinement_radii,
@@ -157,6 +158,7 @@ class OpenPMDBackend:
                     _to_field_block(
                         array,
                         mesh,
+                        record_component,
                         mesh_name=mesh_name,
                         refinement_radii=self._refinement_radii,
                         domain_bounds=self._domain_bounds,
@@ -297,6 +299,7 @@ def _matching_components(components: list[Any], name: str) -> list[str]:
 def _to_slice_block(
     array: np.ndarray,
     mesh: Any,
+    record_component: Any | None = None,
     *,
     mesh_name: str,
     requested_plane: str | None,
@@ -306,16 +309,18 @@ def _to_slice_block(
     axis_labels = tuple(str(axis) for axis in getattr(mesh, "axis_labels", ()))
     spacing = tuple(float(value) for value in getattr(mesh, "grid_spacing", (1.0,) * array.ndim))
     origin = tuple(float(value) for value in getattr(mesh, "grid_global_offset", (0.0,) * array.ndim))
+    grid_position = _component_position(record_component, array.ndim)
 
-    data, axes, block_origin, block_spacing = _reduce_to_2d(
+    data, axes, block_origin, block_spacing, block_grid_position = _reduce_to_2d(
         array,
         axis_labels=axis_labels,
         origin=origin,
         spacing=spacing,
+        grid_position=grid_position,
         requested_plane=requested_plane,
     )
     patch, level = _patch_and_level(mesh_name)
-    metadata = {"openpmd_mesh": mesh_name}
+    metadata = {"openpmd_mesh": mesh_name, "grid_position": block_grid_position}
     refinement_extent = _refinement_extent(
         level=level,
         axes=axes,
@@ -339,6 +344,7 @@ def _to_slice_block(
 def _to_field_block(
     array: np.ndarray,
     mesh: Any,
+    record_component: Any | None = None,
     *,
     mesh_name: str,
     refinement_radii: tuple[float, ...],
@@ -354,8 +360,9 @@ def _to_field_block(
         raise ValueError(f"openPMD axis labels {axes!r} do not match data shape {data.shape}.")
     spacing = tuple(float(value) for value in getattr(mesh, "grid_spacing", (1.0,) * data.ndim))
     origin = tuple(float(value) for value in getattr(mesh, "grid_global_offset", (0.0,) * data.ndim))
+    grid_position = _component_position(record_component, data.ndim)
     patch, level = _patch_and_level(mesh_name)
-    metadata = {"openpmd_mesh": mesh_name}
+    metadata = {"openpmd_mesh": mesh_name, "grid_position": grid_position}
     refinement_bounds = _refinement_bounds(
         level=level,
         axes=axes,
@@ -384,8 +391,9 @@ def _reduce_to_2d(
     axis_labels: tuple[str, ...],
     origin: tuple[float, ...],
     spacing: tuple[float, ...],
+    grid_position: tuple[float, ...],
     requested_plane: str | None,
-) -> tuple[np.ndarray, tuple[str, ...], tuple[float, ...], tuple[float, ...]]:
+) -> tuple[np.ndarray, tuple[str, ...], tuple[float, ...], tuple[float, ...], tuple[float, ...]]:
     axes = axis_labels or tuple(f"axis{i}" for i in range(array.ndim))
     data = np.squeeze(array)
     if data.ndim == 2:
@@ -397,6 +405,7 @@ def _reduce_to_2d(
             tuple(axes[i] for i in kept),
             tuple(origin[i] for i in kept),
             tuple(spacing[i] for i in kept),
+            tuple(grid_position[i] for i in kept),
         )
 
     if array.ndim != 3:
@@ -412,7 +421,18 @@ def _reduce_to_2d(
         tuple(axes[i] for i in kept),
         tuple(origin[i] for i in kept),
         tuple(spacing[i] for i in kept),
+        tuple(grid_position[i] for i in kept),
     )
+
+
+def _component_position(record_component: Any, ndim: int) -> tuple[float, ...]:
+    try:
+        position = tuple(float(value) for value in getattr(record_component, "position"))
+    except Exception:
+        return (0.0,) * ndim
+    if len(position) != ndim:
+        raise ValueError(f"openPMD component position {position!r} does not match data dimensions {ndim}.")
+    return position
 
 
 def _normal_axis(plane: str | None) -> str:

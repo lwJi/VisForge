@@ -55,6 +55,40 @@ def test_sample_field_on_plane_linear_interpolates_3d_block() -> None:
     assert sampled.blocks[0].spacing == (1.0, 1.0)
 
 
+def test_sample_field_on_plane_uses_grid_position_for_interpolation_points() -> None:
+    z, y, x = np.meshgrid(
+        np.arange(3, dtype=float) + 0.5,
+        np.arange(3, dtype=float) + 0.5,
+        np.arange(3, dtype=float) + 0.5,
+        indexing="ij",
+    )
+    block = GridBlock(
+        data=x + 10.0 * y + 100.0 * z,
+        axes=("z", "y", "x"),
+        origin=(0.0, 0.0, 0.0),
+        spacing=(1.0, 1.0, 1.0),
+        metadata={"grid_position": (0.5, 0.5, 0.5)},
+    )
+    field = FieldData(
+        field=FieldInfo(name="rho", dimensions=3),
+        iteration=0,
+        time=None,
+        blocks=(block,),
+    )
+    plane = PlaneSpec(
+        origin=(1.0, 1.0, 1.0),
+        normal=(0.0, 0.0, 1.0),
+        up=(0.0, 1.0, 0.0),
+        size=(1.0, 1.0),
+        resolution=(1, 1),
+        interpolation="linear",
+    )
+
+    sampled = sample_field_on_plane(field, plane)
+
+    np.testing.assert_allclose(sampled.blocks[0].data, np.array([[111.0]]))
+
+
 def test_sample_field_on_plane_nearest_uses_finer_blocks_last() -> None:
     coarse = GridBlock(
         data=np.zeros((3, 3, 3), dtype=float),
