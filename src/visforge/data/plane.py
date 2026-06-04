@@ -115,9 +115,11 @@ def _sample_block(
         raise ValueError("Cannot interpolate a block with zero grid spacing.")
     indices = (coordinates - origin) / spacing
     if interpolation == "nearest":
-        return _nearest(block.data, indices)
+        values, mask = _nearest(block.data, indices)
+        return values, mask & _refinement_mask(block, points)
     if interpolation == "linear":
-        return _linear(block.data, indices)
+        values, mask = _linear(block.data, indices)
+        return values, mask & _refinement_mask(block, points)
     raise ValueError("sample_plane.interpolation must be 'linear' or 'nearest'.")
 
 
@@ -126,6 +128,20 @@ def _axis_indices(axes: tuple[str, ...]) -> dict[str, int]:
     if missing:
         raise ValueError(f"Cannot map block axes {axes!r} onto x/y/z coordinates.")
     return AXIS_INDEX
+
+
+def _refinement_mask(block: GridBlock, points: NDArray[np.float64]) -> NDArray[np.bool_]:
+    bounds = block.metadata.get("refinement_bounds")
+    if not bounds:
+        return np.ones(points.shape[0], dtype=bool)
+    mask = np.ones(points.shape[0], dtype=bool)
+    for axis, index in AXIS_INDEX.items():
+        if axis not in bounds:
+            continue
+        lower, upper = bounds[axis]
+        mask &= points[:, index] >= float(lower)
+        mask &= points[:, index] <= float(upper)
+    return mask
 
 
 def _nearest(

@@ -12,7 +12,7 @@ plot:
 sample_plane:
   origin: [0, 0, 0]
   normal: [0, 0, 1]
-  up: [1, 0, 0]
+  up: [0, 1, 0]
   size: [8, 8]
   resolution: [512, 512]
   interpolation: linear

@@ -90,6 +90,51 @@ def test_sample_field_on_plane_nearest_uses_finer_blocks_last() -> None:
     assert sampled.blocks[0].data.tolist() == [[9.0]]
 
 
+def test_sample_field_on_plane_respects_refinement_bounds() -> None:
+    coarse = GridBlock(
+        data=np.full((4, 4, 4), 1.0, dtype=float),
+        axes=("z", "y", "x"),
+        origin=(-1.5, -1.5, -1.5),
+        spacing=(1.0, 1.0, 1.0),
+        level=0,
+    )
+    fine = GridBlock(
+        data=np.full((4, 4, 4), 9.0, dtype=float),
+        axes=("z", "y", "x"),
+        origin=(-1.5, -1.5, -1.5),
+        spacing=(1.0, 1.0, 1.0),
+        level=1,
+        metadata={"refinement_bounds": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "z": (-0.5, 0.5)}},
+    )
+    field = FieldData(
+        field=FieldInfo(name="rho", dimensions=3),
+        iteration=0,
+        time=None,
+        blocks=(coarse, fine),
+    )
+    plane = PlaneSpec(
+        origin=(0.0, 0.0, 0.0),
+        normal=(0.0, 0.0, 1.0),
+        up=(0.0, 1.0, 0.0),
+        size=(3.0, 3.0),
+        resolution=(3, 3),
+        interpolation="nearest",
+    )
+
+    sampled = sample_field_on_plane(field, plane)
+
+    np.testing.assert_allclose(
+        sampled.blocks[0].data,
+        np.array(
+            [
+                [1.0, 1.0, 1.0],
+                [1.0, 9.0, 1.0],
+                [1.0, 1.0, 1.0],
+            ]
+        ),
+    )
+
+
 def test_sample_field_on_plane_rejects_parallel_up_vector() -> None:
     field = FieldData(
         field=FieldInfo(name="rho", dimensions=3),

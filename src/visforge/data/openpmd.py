@@ -153,7 +153,15 @@ class OpenPMDBackend:
                 record_component = mesh[component_name]
                 array = np.asarray(record_component.load_chunk(), dtype=float)
                 series.flush()
-                blocks.append(_to_field_block(array, mesh, mesh_name=mesh_name))
+                blocks.append(
+                    _to_field_block(
+                        array,
+                        mesh,
+                        mesh_name=mesh_name,
+                        refinement_radii=self._refinement_radii,
+                        domain_bounds=self._domain_bounds,
+                    )
+                )
 
             if not blocks:
                 raise ValueError(f"Field {field!r} was not found in {file.path}")
@@ -328,7 +336,14 @@ def _to_slice_block(
     )
 
 
-def _to_field_block(array: np.ndarray, mesh: Any, *, mesh_name: str) -> GridBlock:
+def _to_field_block(
+    array: np.ndarray,
+    mesh: Any,
+    *,
+    mesh_name: str,
+    refinement_radii: tuple[float, ...],
+    domain_bounds: dict[str, tuple[float, float]],
+) -> GridBlock:
     data = np.asarray(np.squeeze(array), dtype=float)
     if data.ndim != 3:
         raise ValueError(f"Expected 3D openPMD data for plane interpolation, got shape {array.shape}.")
@@ -340,6 +355,18 @@ def _to_field_block(array: np.ndarray, mesh: Any, *, mesh_name: str) -> GridBloc
     spacing = tuple(float(value) for value in getattr(mesh, "grid_spacing", (1.0,) * data.ndim))
     origin = tuple(float(value) for value in getattr(mesh, "grid_global_offset", (0.0,) * data.ndim))
     patch, level = _patch_and_level(mesh_name)
+    metadata = {"openpmd_mesh": mesh_name}
+    refinement_bounds = _refinement_bounds(
+        level=level,
+        axes=axes,
+        shape=data.shape,
+        origin=origin,
+        spacing=spacing,
+        radii=refinement_radii,
+        domain_bounds=domain_bounds,
+    )
+    if refinement_bounds is not None:
+        metadata["refinement_bounds"] = refinement_bounds
     return GridBlock(
         data=data,
         axes=axes,
@@ -347,7 +374,7 @@ def _to_field_block(array: np.ndarray, mesh: Any, *, mesh_name: str) -> GridBloc
         spacing=spacing,
         patch=patch,
         level=level,
-        metadata={"openpmd_mesh": mesh_name},
+        metadata=metadata,
     )
 
 
@@ -471,6 +498,47 @@ def _refinement_extent(
     rx0, rx1 = axis_limits.get(x_axis, (x0, x1))
     ry0, ry1 = axis_limits.get(y_axis, (y0, y1))
     return max(x0, rx0), min(x1, rx1), max(y0, ry0), min(y1, ry1)
+
+
+def _refinement_bounds(
+    *,
+    level: int | None,
+    axes: tuple[str, ...],
+    shape: tuple[int, ...],
+    origin: tuple[float, ...],
+    spacing: tuple[float, ...],
+    radii: tuple[float, ...],
+    domain_bounds: dict[str, tuple[float, float]],
+) -> dict[str, tuple[float, float]] | None:
+    if len(axes) != 3:
+        return None
+    block_bounds = {
+        axis: (origin[index], origin[index] + spacing[index] * shape[index])
+        for index, axis in enumerate(axes)
+    }
+    if level == 0 and domain_bounds:
+        return {
+            axis: _clip_bounds(block_bounds[axis], domain_bounds.get(axis, block_bounds[axis]))
+            for axis in axes
+        }
+    if level is None or level >= len(radii):
+        return None
+    radius = radii[level]
+    if radius <= 0:
+        target_bounds = {axis: block_bounds[axis] for axis in axes}
+    else:
+        target_bounds = {axis: (-radius, radius) for axis in axes}
+    return {
+        axis: _clip_bounds(block_bounds[axis], target_bounds[axis])
+        for axis in axes
+    }
+
+
+def _clip_bounds(
+    block_bounds: tuple[float, float],
+    target_bounds: tuple[float, float],
+) -> tuple[float, float]:
+    return max(block_bounds[0], target_bounds[0]), min(block_bounds[1], target_bounds[1])
 
 
 def _axis_bounds_extent(
