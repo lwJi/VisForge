@@ -2,14 +2,17 @@ dataset: /Users/liwei/docker-workspace/data/TestOutput2D/gaussian
 
 plot:
   field: state
-  iteration: 0
+  component: testsubcyclingmc2_rho
+  iteration: 360
   backend: openpmd
+  vmin: -2.0
+  vmax: +1.6
   output: gfc_sample_plane.png
 
 sample_plane:
   origin: [0, 0, 0]
-  normal: [1, 1, 0]
-  up: [0, 0, 1]
+  normal: [0, 0, 1]
+  up: [1, 0, 0]
   size: [8, 8]
   resolution: [512, 512]
   interpolation: linear

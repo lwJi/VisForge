@@ -122,6 +122,8 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar=("YMIN", "YMAX"),
         help="Visible y-axis range",
     )
+    slice_parser.add_argument("--vmin", type=float, help="Minimum scalar value for the color range")
+    slice_parser.add_argument("--vmax", type=float, help="Maximum scalar value for the color range")
     slice_parser.add_argument("--output", type=Path)
     slice_parser.set_defaults(func=_plot_slice)
     return parser
@@ -167,6 +169,8 @@ def _plot_slice(args: argparse.Namespace) -> int:
             mesh_max_lines=options["mesh_max_lines"],
             xlim=options["xlim"],
             ylim=options["ylim"],
+            vmin=options["vmin"],
+            vmax=options["vmax"],
         )
     except (FileNotFoundError, ValueError) as exc:
         raise SystemExit(str(exc)) from None
@@ -197,6 +201,8 @@ def _slice_options(args: argparse.Namespace) -> dict[str, object]:
         "mesh_max_lines": _choose(args.mesh_max_lines, mesh.get("max_lines")),
         "xlim": _choose(_range_tuple(args.xlim), range_value(view.get("xlim"))),
         "ylim": _choose(_range_tuple(args.ylim), range_value(view.get("ylim"))),
+        "vmin": _choose(args.vmin, plot.get("vmin")),
+        "vmax": _choose(args.vmax, plot.get("vmax")),
     }
     missing = [name for name in ("path", "field", "output") if options[name] is None]
     if missing:
@@ -205,6 +211,10 @@ def _slice_options(args: argparse.Namespace) -> dict[str, object]:
         options["iteration"] = int(options["iteration"])
     if options["mesh_max_lines"] is not None:
         options["mesh_max_lines"] = int(options["mesh_max_lines"])
+    if options["vmin"] is not None:
+        options["vmin"] = float(options["vmin"])
+    if options["vmax"] is not None:
+        options["vmax"] = float(options["vmax"])
     if options["plane"] is not None and options["sample_plane"] is not None:
         raise SystemExit("plot-slice accepts either --plane or sample_plane config, not both.")
     if options["path"] is not None:

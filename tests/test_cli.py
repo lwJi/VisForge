@@ -24,6 +24,8 @@ def test_plot_slice_mesh_defaults() -> None:
     assert options["mesh_linewidth"] == 0.15
     assert options["mesh_alpha"] == 0.75
     assert options["component"] is None
+    assert options["vmin"] is None
+    assert options["vmax"] is None
     assert args.xlim is None
     assert args.ylim is None
 
@@ -69,6 +71,29 @@ def test_plot_slice_axis_range_options() -> None:
     assert args.ylim == [-1.5, 1.5]
 
 
+def test_plot_slice_color_range_options() -> None:
+    parser = _build_parser()
+    args = parser.parse_args(
+        [
+            "plot-slice",
+            "dataset",
+            "--field",
+            "state",
+            "--component",
+            "testsubcyclingmc2_rho",
+            "--vmin",
+            "0",
+            "--vmax",
+            "1.5",
+            "--output",
+            "rho.png",
+        ]
+    )
+    options = _slice_options(args)
+    assert options["vmin"] == 0.0
+    assert options["vmax"] == 1.5
+
+
 def test_plot_slice_config_file_supplies_defaults(tmp_path) -> None:
     config = tmp_path / "plot.yaml"
     config.write_text(
@@ -80,6 +105,8 @@ plot:
   iteration: 0
   plane: xz
   backend: openpmd
+  vmin: -1
+  vmax: 1
   output: gfc.png
 mesh:
   show: true
@@ -105,6 +132,8 @@ view:
     assert options["mesh_color"] == "cyan"
     assert options["mesh_linewidth"] == 0.2
     assert options["mesh_alpha"] == 0.4
+    assert options["vmin"] == -1.0
+    assert options["vmax"] == 1.0
     assert options["xlim"] == (-4.0, 4.0)
     assert options["ylim"] == (-3.0, 3.0)
 

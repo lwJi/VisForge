@@ -28,6 +28,8 @@ def make_slice_plot(
     mesh_max_lines: int | None = None,
     xlim: tuple[float, float] | None = None,
     ylim: tuple[float, float] | None = None,
+    vmin: float | None = None,
+    vmax: float | None = None,
 ) -> PlotResult:
     if plane is not None and sample_plane is not None:
         raise ValueError("Use either an axis-aligned plane or sample_plane, not both.")
@@ -47,4 +49,6 @@ def make_slice_plot(
         mesh_max_lines=mesh_max_lines,
         xlim=xlim,
         ylim=ylim,
+        vmin=vmin,
+        vmax=vmax,
     )
