@@ -10,7 +10,7 @@ import numpy as np
 
 from visforge.data.backend import BackendUnavailableError, UnsupportedOperationError
 from visforge.data.carpetx import discover
-from visforge.data.model import FieldInfo, GridBlock, SliceData
+from visforge.data.model import FieldData, FieldInfo, GridBlock, SliceData
 
 try:  # pragma: no cover - exercised when dependency is absent
     import openpmd_api as io
@@ -118,6 +118,41 @@ class OpenPMDBackend:
         finally:
             series.close()
 
+    def read_field(
+        self,
+        field: str,
+        *,
+        iteration: int | None = None,
+    ) -> FieldData:
+        file = self._select_one_volume_file(iteration=iteration)
+        series = io.Series(str(file.path), io.Access.read_only)
+        try:
+            opmd_iteration = _first_iteration(series)
+            time = _attribute(opmd_iteration, "time")
+            blocks: list[GridBlock] = []
+            for mesh_name in opmd_iteration.meshes:
+                if not _matches_field(mesh_name, field):
+                    continue
+                mesh = opmd_iteration.meshes[mesh_name]
+                component_name = _component_name(mesh, field)
+                component = mesh[component_name]
+                array = np.asarray(component.load_chunk(), dtype=float)
+                series.flush()
+                blocks.append(_to_field_block(array, mesh, mesh_name=mesh_name))
+
+            if not blocks:
+                raise ValueError(f"Field {field!r} was not found in {file.path}")
+
+            return FieldData(
+                field=FieldInfo(name=field, dimensions=3),
+                iteration=file.iteration if file.iteration is not None else int(_first_iteration_key(series)),
+                time=float(time) if time is not None else None,
+                blocks=tuple(blocks),
+                metadata={"source": str(file.path)},
+            )
+        finally:
+            series.close()
+
     def read_line(self, field: str, *, iteration: int | None = None, axis: str | None = None):
         raise UnsupportedOperationError("openPMD line reads are not implemented yet; use TSV outputs.")
 
@@ -147,6 +182,18 @@ class OpenPMDBackend:
             raise FileNotFoundError("No openPMD file matches the requested iteration and plane.")
         names = ", ".join(file.path.name for file in files[:8])
         raise ValueError(f"openPMD selection is ambiguous; specify --plane. Matches include: {names}")
+
+    def _select_one_volume_file(self, *, iteration: int | None):
+        files = tuple(file for file in self._select_files(iteration=iteration) if file.plane is None)
+        if iteration is None and files:
+            latest = max(file.iteration or 0 for file in files)
+            files = tuple(file for file in files if (file.iteration or 0) == latest)
+        if len(files) == 1:
+            return files[0]
+        if not files:
+            raise FileNotFoundError("No 3D openPMD file matches the requested iteration.")
+        names = ", ".join(file.path.name for file in files[:8])
+        raise ValueError(f"openPMD volume selection is ambiguous. Matches include: {names}")
 
 
 def _first_iteration(series: Any):
@@ -230,6 +277,29 @@ def _to_slice_block(
         patch=patch,
         level=level,
         metadata=metadata,
+    )
+
+
+def _to_field_block(array: np.ndarray, mesh: Any, *, mesh_name: str) -> GridBlock:
+    data = np.asarray(np.squeeze(array), dtype=float)
+    if data.ndim != 3:
+        raise ValueError(f"Expected 3D openPMD data for plane interpolation, got shape {array.shape}.")
+    axes = tuple(str(axis) for axis in getattr(mesh, "axis_labels", ()))
+    if not axes:
+        axes = tuple(f"axis{i}" for i in range(data.ndim))
+    if len(axes) != data.ndim:
+        raise ValueError(f"openPMD axis labels {axes!r} do not match data shape {data.shape}.")
+    spacing = tuple(float(value) for value in getattr(mesh, "grid_spacing", (1.0,) * data.ndim))
+    origin = tuple(float(value) for value in getattr(mesh, "grid_global_offset", (0.0,) * data.ndim))
+    patch, level = _patch_and_level(mesh_name)
+    return GridBlock(
+        data=data,
+        axes=axes,
+        origin=origin,
+        spacing=spacing,
+        patch=patch,
+        level=level,
+        metadata={"openpmd_mesh": mesh_name},
     )
 
 

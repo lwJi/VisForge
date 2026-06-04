@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Protocol
 
-from visforge.data.model import FieldInfo, LineData, SliceData
+from visforge.data.model import FieldData, FieldInfo, LineData, SliceData
 
 
 class DataBackend(Protocol):
@@ -27,6 +27,14 @@ class DataBackend(Protocol):
         plane: str | None = None,
     ) -> SliceData:
         """Read a 2D scalar slice or native plane output."""
+
+    def read_field(
+        self,
+        field: str,
+        *,
+        iteration: int | None = None,
+    ) -> FieldData:
+        """Read a 3D scalar field."""
 
     def read_line(
         self,

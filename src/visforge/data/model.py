@@ -93,6 +93,18 @@ class FieldData:
 
 
 @dataclass(frozen=True)
+class PlaneSpec:
+    """User-defined 2D sampling plane embedded in 3D coordinates."""
+
+    origin: tuple[float, float, float]
+    normal: tuple[float, float, float]
+    up: tuple[float, float, float]
+    size: tuple[float, float]
+    resolution: tuple[int, int]
+    interpolation: Literal["linear", "nearest"] = "linear"
+
+
+@dataclass(frozen=True)
 class SliceData:
     """A 2D scalar slice or native 2D plane output."""
 

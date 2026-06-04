@@ -1,0 +1,19 @@
+dataset: /Users/liwei/docker-workspace/data/TestOutput3D/testoutput3d
+
+plot:
+  field: gfc
+  iteration: 0
+  backend: openpmd
+  output: gfc_sample_plane.png
+
+sample_plane:
+  origin: [0, 0, 0]
+  normal: [1, 1, 0]
+  up: [0, 0, 1]
+  size: [8, 8]
+  resolution: [512, 512]
+  interpolation: linear
+
+view:
+  xlim: [-4, 4]
+  ylim: [-4, 4]

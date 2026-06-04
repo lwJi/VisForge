@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from typing import Any
 
 from visforge.config import bool_value, load_config, range_value, section
+from visforge.data.model import PlaneSpec
 from visforge.workflows.inspect import format_summary, inspect_dataset
 from visforge.workflows.line_plot import make_line_plot
 from visforge.workflows.slice_plot import make_slice_plot
@@ -41,6 +43,46 @@ def _build_parser() -> argparse.ArgumentParser:
     slice_parser.add_argument("--field")
     slice_parser.add_argument("--iteration", type=int)
     slice_parser.add_argument("--plane", choices=("xy", "xz", "yz"))
+    slice_parser.add_argument(
+        "--sample-plane-origin",
+        nargs=3,
+        type=float,
+        metavar=("X", "Y", "Z"),
+        help="Center of a user-defined 2D plane sampled from a 3D field",
+    )
+    slice_parser.add_argument(
+        "--sample-plane-normal",
+        nargs=3,
+        type=float,
+        metavar=("NX", "NY", "NZ"),
+        help="Normal vector of a user-defined 2D plane",
+    )
+    slice_parser.add_argument(
+        "--sample-plane-up",
+        nargs=3,
+        type=float,
+        metavar=("UX", "UY", "UZ"),
+        help="Preferred vertical direction for a user-defined 2D plane",
+    )
+    slice_parser.add_argument(
+        "--sample-plane-size",
+        nargs=2,
+        type=float,
+        metavar=("WIDTH", "HEIGHT"),
+        help="Physical width and height of a user-defined 2D plane",
+    )
+    slice_parser.add_argument(
+        "--sample-plane-resolution",
+        nargs=2,
+        type=int,
+        metavar=("NX", "NY"),
+        help="Output sample resolution for a user-defined 2D plane",
+    )
+    slice_parser.add_argument(
+        "--interpolation",
+        choices=("linear", "nearest"),
+        help="Interpolation method for a user-defined 2D plane",
+    )
     slice_parser.add_argument("--backend", default="auto", choices=("auto", "openpmd", "silo"))
     slice_parser.add_argument(
         "--show-mesh",
@@ -109,6 +151,7 @@ def _plot_slice(args: argparse.Namespace) -> int:
         field=options["field"],
         iteration=options["iteration"],
         plane=options["plane"],
+        sample_plane=options["sample_plane"],
         backend=options["backend"],
         output=options["output"],
         show_mesh=options["show_mesh"],
@@ -128,12 +171,14 @@ def _slice_options(args: argparse.Namespace) -> dict[str, object]:
     plot = section(config, "plot")
     mesh = section(config, "mesh")
     view = section(config, "view")
+    sample = section(config, "sample_plane")
 
     options = {
         "path": args.path or config.get("dataset") or plot.get("dataset"),
         "field": _choose(args.field, plot.get("field")),
         "iteration": _choose(args.iteration, plot.get("iteration")),
         "plane": _choose(args.plane, plot.get("plane")),
+        "sample_plane": _sample_plane(args, sample),
         "backend": _choose(args.backend if args.backend != "auto" else None, plot.get("backend"), "auto"),
         "output": _choose(args.output, plot.get("output")),
         "show_mesh": bool_value(_choose(args.show_mesh if args.show_mesh else None, mesh.get("show"), False)),
@@ -151,6 +196,8 @@ def _slice_options(args: argparse.Namespace) -> dict[str, object]:
         options["iteration"] = int(options["iteration"])
     if options["mesh_max_lines"] is not None:
         options["mesh_max_lines"] = int(options["mesh_max_lines"])
+    if options["plane"] is not None and options["sample_plane"] is not None:
+        raise SystemExit("plot-slice accepts either --plane or sample_plane config, not both.")
     if options["path"] is not None:
         options["path"] = Path(options["path"])
     if options["output"] is not None:
@@ -170,6 +217,68 @@ def _range_tuple(values: list[float] | None) -> tuple[float, float] | None:
         return None
     start, stop = values
     return start, stop
+
+
+def _sample_plane(args: argparse.Namespace, config: dict[str, Any]) -> PlaneSpec | None:
+    cli_values = (
+        args.sample_plane_origin,
+        args.sample_plane_normal,
+        args.sample_plane_up,
+        args.sample_plane_size,
+        args.sample_plane_resolution,
+        args.interpolation,
+    )
+    if not config and all(value is None for value in cli_values):
+        return None
+
+    origin = _choose(_vector_tuple(args.sample_plane_origin, 3), _vector_tuple(config.get("origin"), 3))
+    normal = _choose(_vector_tuple(args.sample_plane_normal, 3), _vector_tuple(config.get("normal"), 3))
+    up = _choose(_vector_tuple(args.sample_plane_up, 3), _vector_tuple(config.get("up"), 3))
+    size = _choose(_vector_tuple(args.sample_plane_size, 2), _vector_tuple(config.get("size"), 2))
+    resolution = _choose(
+        _int_tuple(args.sample_plane_resolution, 2),
+        _int_tuple(config.get("resolution"), 2),
+    )
+    interpolation = _choose(args.interpolation, config.get("interpolation"), "linear")
+    missing = [
+        name
+        for name, value in (
+            ("origin", origin),
+            ("normal", normal),
+            ("up", up),
+            ("size", size),
+            ("resolution", resolution),
+        )
+        if value is None
+    ]
+    if missing:
+        raise SystemExit(f"sample_plane requires {', '.join(missing)}.")
+    if interpolation not in {"linear", "nearest"}:
+        raise SystemExit("sample_plane.interpolation must be 'linear' or 'nearest'.")
+    return PlaneSpec(
+        origin=origin,
+        normal=normal,
+        up=up,
+        size=size,
+        resolution=resolution,
+        interpolation=interpolation,
+    )
+
+
+def _vector_tuple(values: Any, length: int) -> tuple[float, ...] | None:
+    if values is None:
+        return None
+    if not isinstance(values, (list, tuple)) or len(values) != length:
+        raise ValueError(f"Expected {length} numeric values.")
+    return tuple(float(value) for value in values)
+
+
+def _int_tuple(values: Any, length: int) -> tuple[int, ...] | None:
+    if values is None:
+        return None
+    if not isinstance(values, (list, tuple)) or len(values) != length:
+        raise ValueError(f"Expected {length} integer values.")
+    return tuple(int(value) for value in values)
 
 
 if __name__ == "__main__":  # pragma: no cover

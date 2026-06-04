@@ -33,6 +33,9 @@ class TsvBackend:
     def read_slice(self, field: str, *, iteration: int | None = None, plane: str | None = None):
         raise UnsupportedOperationError("TSV files contain line outputs, not 2D slices.")
 
+    def read_field(self, field: str, *, iteration: int | None = None):
+        raise UnsupportedOperationError("TSV files contain line outputs, not 3D fields.")
+
     def read_line(
         self,
         field: str,

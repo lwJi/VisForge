@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+from visforge.data.model import PlaneSpec
 from visforge.cli import _build_parser, _slice_options
 
 
@@ -113,3 +116,101 @@ view:
     options = _slice_options(args)
     assert options["field"] == "gfv"
     assert options["xlim"] == (-1.0, 1.0)
+
+
+def test_plot_slice_config_file_supplies_sample_plane(tmp_path) -> None:
+    config = tmp_path / "plot.yaml"
+    config.write_text(
+        """
+dataset: /data/run
+plot:
+  field: gfc
+  output: gfc.png
+sample_plane:
+  origin: [0, 0, 0]
+  normal: [1, 1, 0]
+  up: [0, 0, 1]
+  size: [8, 6]
+  resolution: [512, 384]
+  interpolation: nearest
+""",
+        encoding="utf-8",
+    )
+    parser = _build_parser()
+    args = parser.parse_args(["plot-slice", "--config", str(config)])
+    options = _slice_options(args)
+    assert options["sample_plane"] == PlaneSpec(
+        origin=(0.0, 0.0, 0.0),
+        normal=(1.0, 1.0, 0.0),
+        up=(0.0, 0.0, 1.0),
+        size=(8.0, 6.0),
+        resolution=(512, 384),
+        interpolation="nearest",
+    )
+
+
+def test_plot_slice_cli_supplies_sample_plane() -> None:
+    parser = _build_parser()
+    args = parser.parse_args(
+        [
+            "plot-slice",
+            "dataset",
+            "--field",
+            "gfc",
+            "--sample-plane-origin",
+            "0",
+            "0",
+            "0",
+            "--sample-plane-normal",
+            "1",
+            "0",
+            "0",
+            "--sample-plane-up",
+            "0",
+            "0",
+            "1",
+            "--sample-plane-size",
+            "4",
+            "4",
+            "--sample-plane-resolution",
+            "128",
+            "128",
+            "--interpolation",
+            "linear",
+            "--output",
+            "gfc.png",
+        ]
+    )
+    options = _slice_options(args)
+    assert options["sample_plane"] == PlaneSpec(
+        origin=(0.0, 0.0, 0.0),
+        normal=(1.0, 0.0, 0.0),
+        up=(0.0, 0.0, 1.0),
+        size=(4.0, 4.0),
+        resolution=(128, 128),
+        interpolation="linear",
+    )
+
+
+def test_plot_slice_rejects_plane_and_sample_plane(tmp_path) -> None:
+    config = tmp_path / "plot.yaml"
+    config.write_text(
+        """
+dataset: /data/run
+plot:
+  field: gfc
+  plane: xy
+  output: gfc.png
+sample_plane:
+  origin: [0, 0, 0]
+  normal: [0, 0, 1]
+  up: [0, 1, 0]
+  size: [1, 1]
+  resolution: [32, 32]
+""",
+        encoding="utf-8",
+    )
+    parser = _build_parser()
+    args = parser.parse_args(["plot-slice", "--config", str(config)])
+    with pytest.raises(SystemExit, match="either --plane or sample_plane"):
+        _slice_options(args)

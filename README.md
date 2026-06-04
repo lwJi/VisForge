@@ -59,6 +59,22 @@ Use a YAML config file instead of passing every option on the command line:
 $HOME/Misc/venv/py3/bin/visforge plot-slice --config examples/plot_slice.yaml
 ```
 
+Sample a 3D openPMD field onto a user-defined 2D plane:
+
+```bash
+$HOME/Misc/venv/py3/bin/visforge plot-slice /Users/liwei/docker-workspace/data/TestOutput3D/testoutput3d \
+  --field gfc \
+  --iteration 0 \
+  --backend openpmd \
+  --sample-plane-origin 0 0 0 \
+  --sample-plane-normal 1 1 0 \
+  --sample-plane-up 0 0 1 \
+  --sample-plane-size 8 8 \
+  --sample-plane-resolution 512 512 \
+  --interpolation linear \
+  --output gfc_sample_plane.png
+```
+
 CLI options override values from the config file:
 
 ```bash

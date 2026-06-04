@@ -32,6 +32,9 @@ class SiloBackend:
     def read_slice(self, field: str, *, iteration: int | None = None, plane: str | None = None):
         _raise_unavailable()
 
+    def read_field(self, field: str, *, iteration: int | None = None):
+        _raise_unavailable()
+
     def read_line(self, field: str, *, iteration: int | None = None, axis: str | None = None):
         _raise_unavailable()
 
