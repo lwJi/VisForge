@@ -1,7 +1,7 @@
-dataset: /Users/liwei/docker-workspace/data/TestOutput3D/testoutput3d
+dataset: /Users/liwei/docker-workspace/data/TestOutput2D/gaussian
 
 plot:
-  field: gfc
+  field: state
   iteration: 0
   backend: openpmd
   output: gfc_sample_plane.png
