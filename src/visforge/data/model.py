@@ -143,3 +143,4 @@ class DatasetSummary:
     fields: tuple[str, ...]
     file_count: int
     metadata_count: int
+    field_components: dict[str, tuple[str, ...]] = field(default_factory=dict)

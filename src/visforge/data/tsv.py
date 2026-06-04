@@ -30,10 +30,23 @@ class TsvBackend:
         names = sorted({file.variable for file in files if file.variable is not None})
         return tuple(FieldInfo(name=name, dimensions=1) for name in names)
 
-    def read_slice(self, field: str, *, iteration: int | None = None, plane: str | None = None):
+    def read_slice(
+        self,
+        field: str,
+        *,
+        component: str | None = None,
+        iteration: int | None = None,
+        plane: str | None = None,
+    ):
         raise UnsupportedOperationError("TSV files contain line outputs, not 2D slices.")
 
-    def read_field(self, field: str, *, iteration: int | None = None):
+    def read_field(
+        self,
+        field: str,
+        *,
+        component: str | None = None,
+        iteration: int | None = None,
+    ):
         raise UnsupportedOperationError("TSV files contain line outputs, not 3D fields.")
 
     def read_line(

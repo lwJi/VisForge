@@ -41,6 +41,7 @@ def _build_parser() -> argparse.ArgumentParser:
     slice_parser.add_argument("path", nargs="?", type=Path)
     slice_parser.add_argument("--config", type=Path, help="YAML config file with plot-slice defaults")
     slice_parser.add_argument("--field")
+    slice_parser.add_argument("--component", help="openPMD record component to plot when a field has multiple components")
     slice_parser.add_argument("--iteration", type=int)
     slice_parser.add_argument("--plane", choices=("xy", "xz", "yz"))
     slice_parser.add_argument(
@@ -132,36 +133,43 @@ def _inspect(args: argparse.Namespace) -> int:
 
 
 def _plot_line(args: argparse.Namespace) -> int:
-    result = make_line_plot(
-        args.path,
-        field=args.field,
-        axis=args.axis,
-        iteration=args.iteration,
-        backend=args.backend,
-        output=args.output,
-    )
+    try:
+        result = make_line_plot(
+            args.path,
+            field=args.field,
+            axis=args.axis,
+            iteration=args.iteration,
+            backend=args.backend,
+            output=args.output,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        raise SystemExit(str(exc)) from None
     print(f"Wrote {result.output}")
     return 0
 
 
 def _plot_slice(args: argparse.Namespace) -> int:
     options = _slice_options(args)
-    result = make_slice_plot(
-        options["path"],
-        field=options["field"],
-        iteration=options["iteration"],
-        plane=options["plane"],
-        sample_plane=options["sample_plane"],
-        backend=options["backend"],
-        output=options["output"],
-        show_mesh=options["show_mesh"],
-        mesh_color=options["mesh_color"],
-        mesh_linewidth=options["mesh_linewidth"],
-        mesh_alpha=options["mesh_alpha"],
-        mesh_max_lines=options["mesh_max_lines"],
-        xlim=options["xlim"],
-        ylim=options["ylim"],
-    )
+    try:
+        result = make_slice_plot(
+            options["path"],
+            field=options["field"],
+            component=options["component"],
+            iteration=options["iteration"],
+            plane=options["plane"],
+            sample_plane=options["sample_plane"],
+            backend=options["backend"],
+            output=options["output"],
+            show_mesh=options["show_mesh"],
+            mesh_color=options["mesh_color"],
+            mesh_linewidth=options["mesh_linewidth"],
+            mesh_alpha=options["mesh_alpha"],
+            mesh_max_lines=options["mesh_max_lines"],
+            xlim=options["xlim"],
+            ylim=options["ylim"],
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        raise SystemExit(str(exc)) from None
     print(f"Wrote {result.output}")
     return 0
 
@@ -176,6 +184,7 @@ def _slice_options(args: argparse.Namespace) -> dict[str, object]:
     options = {
         "path": args.path or config.get("dataset") or plot.get("dataset"),
         "field": _choose(args.field, plot.get("field")),
+        "component": _choose(args.component, plot.get("component")),
         "iteration": _choose(args.iteration, plot.get("iteration")),
         "plane": _choose(args.plane, plot.get("plane")),
         "sample_plane": _sample_plane(args, sample),

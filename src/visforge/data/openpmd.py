@@ -53,29 +53,34 @@ class OpenPMDBackend:
 
     def list_fields(self, iteration: int | None = None) -> tuple[FieldInfo, ...]:
         files = self._select_files(iteration=iteration)
-        fields: dict[str, FieldInfo] = {}
+        components: dict[str, set[str]] = {}
+        examples: dict[str, str] = {}
         for file in files:
             series = io.Series(str(file.path), io.Access.read_only)
             try:
                 opmd_iteration = _first_iteration(series)
                 for mesh_name in opmd_iteration.meshes:
                     short = _short_field_name(mesh_name)
-                    fields.setdefault(
-                        short,
-                        FieldInfo(
-                            name=short,
-                            dimensions=None,
-                            metadata={"openpmd_mesh_example": mesh_name},
-                        ),
-                    )
+                    mesh = opmd_iteration.meshes[mesh_name]
+                    components.setdefault(short, set()).update(str(component) for component in list(mesh))
+                    examples.setdefault(short, mesh_name)
             finally:
                 series.close()
-        return tuple(fields[name] for name in sorted(fields))
+        return tuple(
+            FieldInfo(
+                name=name,
+                components=tuple(sorted(components[name])),
+                dimensions=None,
+                metadata={"openpmd_mesh_example": examples[name]},
+            )
+            for name in sorted(components)
+        )
 
     def read_slice(
         self,
         field: str,
         *,
+        component: str | None = None,
         iteration: int | None = None,
         plane: str | None = None,
     ) -> SliceData:
@@ -85,13 +90,15 @@ class OpenPMDBackend:
             opmd_iteration = _first_iteration(series)
             time = _attribute(opmd_iteration, "time")
             blocks: list[GridBlock] = []
+            selected_component: str | None = None
             for mesh_name in opmd_iteration.meshes:
                 if not _matches_field(mesh_name, field):
                     continue
                 mesh = opmd_iteration.meshes[mesh_name]
-                component_name = _component_name(mesh, field)
-                component = mesh[component_name]
-                array = np.asarray(component.load_chunk(), dtype=float)
+                component_name = _component_name(mesh, field, component)
+                selected_component = selected_component or component_name
+                record_component = mesh[component_name]
+                array = np.asarray(record_component.load_chunk(), dtype=float)
                 series.flush()
                 block = _to_slice_block(
                     array,
@@ -108,7 +115,12 @@ class OpenPMDBackend:
 
             inferred_plane = plane or file.plane or _plane_from_axes(blocks[0].axes)
             return SliceData(
-                field=FieldInfo(name=field, dimensions=2),
+                field=FieldInfo(
+                    name=selected_component or field,
+                    components=((selected_component,) if selected_component is not None else ()),
+                    dimensions=2,
+                    metadata={"openpmd_record": field},
+                ),
                 iteration=file.iteration if file.iteration is not None else int(_first_iteration_key(series)),
                 time=float(time) if time is not None else None,
                 plane=inferred_plane,
@@ -122,6 +134,7 @@ class OpenPMDBackend:
         self,
         field: str,
         *,
+        component: str | None = None,
         iteration: int | None = None,
     ) -> FieldData:
         file = self._select_one_volume_file(iteration=iteration)
@@ -130,13 +143,15 @@ class OpenPMDBackend:
             opmd_iteration = _first_iteration(series)
             time = _attribute(opmd_iteration, "time")
             blocks: list[GridBlock] = []
+            selected_component: str | None = None
             for mesh_name in opmd_iteration.meshes:
                 if not _matches_field(mesh_name, field):
                     continue
                 mesh = opmd_iteration.meshes[mesh_name]
-                component_name = _component_name(mesh, field)
-                component = mesh[component_name]
-                array = np.asarray(component.load_chunk(), dtype=float)
+                component_name = _component_name(mesh, field, component)
+                selected_component = selected_component or component_name
+                record_component = mesh[component_name]
+                array = np.asarray(record_component.load_chunk(), dtype=float)
                 series.flush()
                 blocks.append(_to_field_block(array, mesh, mesh_name=mesh_name))
 
@@ -144,7 +159,12 @@ class OpenPMDBackend:
                 raise ValueError(f"Field {field!r} was not found in {file.path}")
 
             return FieldData(
-                field=FieldInfo(name=field, dimensions=3),
+                field=FieldInfo(
+                    name=selected_component or field,
+                    components=((selected_component,) if selected_component is not None else ()),
+                    dimensions=3,
+                    metadata={"openpmd_record": field},
+                ),
                 iteration=file.iteration if file.iteration is not None else int(_first_iteration_key(series)),
                 time=float(time) if time is not None else None,
                 blocks=tuple(blocks),
@@ -228,14 +248,42 @@ def _matches_field(mesh_name: str, field: str) -> bool:
     return field in {base, base.rsplit("_", 1)[-1]}
 
 
-def _component_name(mesh: Any, field: str) -> str:
+def _component_name(mesh: Any, field: str, component: str | None) -> str:
     components = list(mesh)
     if not components:
         raise ValueError("openPMD mesh has no record components.")
-    for component in components:
-        if component == field or component.endswith(f"_{field}"):
-            return component
-    return components[0]
+    if component is not None:
+        matches = _matching_components(components, component)
+        if not matches:
+            available = ", ".join(str(value) for value in components)
+            raise ValueError(
+                f"Field {field!r} does not contain component {component!r}. "
+                f"Available components: {available}"
+            )
+        if len(matches) > 1:
+            available = ", ".join(str(value) for value in matches)
+            raise ValueError(f"Component {component!r} is ambiguous. Matches: {available}")
+        return str(matches[0])
+
+    if len(components) == 1:
+        return str(components[0])
+
+    matches = _matching_components(components, field)
+    if len(matches) == 1:
+        return str(matches[0])
+
+    available = ", ".join(str(value) for value in components)
+    raise ValueError(
+        f"Field {field!r} has multiple components: {available}. "
+        "Specify one with --component."
+    )
+
+
+def _matching_components(components: list[Any], name: str) -> list[str]:
+    exact = [str(component) for component in components if str(component) == name]
+    if exact:
+        return exact
+    return [str(component) for component in components if str(component).endswith(f"_{name}")]
 
 
 def _to_slice_block(

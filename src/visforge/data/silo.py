@@ -29,10 +29,23 @@ class SiloBackend:
     def list_fields(self, iteration: int | None = None) -> tuple[FieldInfo, ...]:
         _raise_unavailable()
 
-    def read_slice(self, field: str, *, iteration: int | None = None, plane: str | None = None):
+    def read_slice(
+        self,
+        field: str,
+        *,
+        component: str | None = None,
+        iteration: int | None = None,
+        plane: str | None = None,
+    ):
         _raise_unavailable()
 
-    def read_field(self, field: str, *, iteration: int | None = None):
+    def read_field(
+        self,
+        field: str,
+        *,
+        component: str | None = None,
+        iteration: int | None = None,
+    ):
         _raise_unavailable()
 
     def read_line(self, field: str, *, iteration: int | None = None, axis: str | None = None):

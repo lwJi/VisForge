@@ -23,8 +23,28 @@ def test_plot_slice_mesh_defaults() -> None:
     options = _slice_options(args)
     assert options["mesh_linewidth"] == 0.15
     assert options["mesh_alpha"] == 0.75
+    assert options["component"] is None
     assert args.xlim is None
     assert args.ylim is None
+
+
+def test_plot_slice_component_option() -> None:
+    parser = _build_parser()
+    args = parser.parse_args(
+        [
+            "plot-slice",
+            "dataset",
+            "--field",
+            "state",
+            "--component",
+            "testsubcyclingmc2_rho",
+            "--output",
+            "rho.png",
+        ]
+    )
+    options = _slice_options(args)
+    assert options["field"] == "state"
+    assert options["component"] == "testsubcyclingmc2_rho"
 
 
 def test_plot_slice_axis_range_options() -> None:
@@ -56,6 +76,7 @@ def test_plot_slice_config_file_supplies_defaults(tmp_path) -> None:
 dataset: /data/run
 plot:
   field: gfc
+  component: gfc
   iteration: 0
   plane: xz
   backend: openpmd
@@ -76,6 +97,7 @@ view:
     options = _slice_options(args)
     assert options["path"] == Path("/data/run")
     assert options["field"] == "gfc"
+    assert options["component"] == "gfc"
     assert options["iteration"] == 0
     assert options["plane"] == "xz"
     assert options["backend"] == "openpmd"

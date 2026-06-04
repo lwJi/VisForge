@@ -15,6 +15,7 @@ def make_slice_plot(
     path: str | Path,
     *,
     field: str,
+    component: str | None = None,
     iteration: int | None = None,
     plane: str | None = None,
     sample_plane: PlaneSpec | None = None,
@@ -32,9 +33,9 @@ def make_slice_plot(
         raise ValueError("Use either an axis-aligned plane or sample_plane, not both.")
     dataset = open_dataset(path, backend=backend)
     if sample_plane is None:
-        slice_data = dataset.read_slice(field, iteration=iteration, plane=plane)
+        slice_data = dataset.read_slice(field, component=component, iteration=iteration, plane=plane)
     else:
-        field_data = dataset.read_field(field, iteration=iteration)
+        field_data = dataset.read_field(field, component=component, iteration=iteration)
         slice_data = sample_field_on_plane(field_data, sample_plane)
     return plot_scalar_slice(
         slice_data,

@@ -23,6 +23,7 @@ class DataBackend(Protocol):
         self,
         field: str,
         *,
+        component: str | None = None,
         iteration: int | None = None,
         plane: str | None = None,
     ) -> SliceData:
@@ -32,6 +33,7 @@ class DataBackend(Protocol):
         self,
         field: str,
         *,
+        component: str | None = None,
         iteration: int | None = None,
     ) -> FieldData:
         """Read a 3D scalar field."""
