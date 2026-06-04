@@ -169,6 +169,62 @@ def test_sample_field_on_plane_respects_refinement_bounds() -> None:
     )
 
 
+def test_sample_field_on_plane_linear_requires_valid_refined_stencil() -> None:
+    z, y, x = np.meshgrid(
+        -1.75 + 0.5 * np.arange(8, dtype=float),
+        -1.75 + 0.5 * np.arange(8, dtype=float),
+        -1.75 + 0.5 * np.arange(8, dtype=float),
+        indexing="ij",
+    )
+    coarse = GridBlock(
+        data=z,
+        axes=("z", "y", "x"),
+        origin=(-2.0, -2.0, -2.0),
+        spacing=(0.5, 0.5, 0.5),
+        level=0,
+        metadata={"grid_position": (0.5, 0.5, 0.5)},
+    )
+    fine_data = np.zeros_like(z)
+    valid = (np.abs(z) < 1.0) & (np.abs(y) < 1.0) & (np.abs(x) < 1.0)
+    fine_data[valid] = z[valid]
+    fine = GridBlock(
+        data=fine_data,
+        axes=("z", "y", "x"),
+        origin=(-2.0, -2.0, -2.0),
+        spacing=(0.5, 0.5, 0.5),
+        level=1,
+        metadata={
+            "grid_position": (0.5, 0.5, 0.5),
+            "refinement_bounds": {
+                "z": (-1.0, 1.0),
+                "y": (-1.0, 1.0),
+                "x": (-1.0, 1.0),
+            },
+        },
+    )
+    field = FieldData(
+        field=FieldInfo(name="rho", dimensions=3),
+        iteration=0,
+        time=None,
+        blocks=(coarse, fine),
+    )
+    plane = PlaneSpec(
+        origin=(0.0, 0.0, 0.0),
+        normal=(0.0, 1.0, 0.0),
+        up=(0.0, 0.0, 1.0),
+        size=(0.5, 2.0),
+        resolution=(1, 8),
+        interpolation="linear",
+    )
+
+    sampled = sample_field_on_plane(field, plane)
+
+    np.testing.assert_allclose(
+        sampled.blocks[0].data[:, 0],
+        np.array([-0.875, -0.625, -0.375, -0.125, 0.125, 0.375, 0.625, 0.875]),
+    )
+
+
 def test_sample_field_on_plane_rejects_parallel_up_vector() -> None:
     field = FieldData(
         field=FieldInfo(name="rho", dimensions=3),

@@ -118,8 +118,14 @@ def _sample_block(
         values, mask = _nearest(block.data, indices)
         return values, mask & _refinement_mask(block, points)
     if interpolation == "linear":
-        values, mask = _linear(block.data, indices)
-        return values, mask & _refinement_mask(block, points)
+        values, mask, lower, upper = _linear(block.data, indices)
+        return values, mask & _refinement_mask(block, points) & _linear_refinement_stencil_mask(
+            block,
+            lower,
+            upper,
+            origin,
+            spacing,
+        )
     raise ValueError("sample_plane.interpolation must be 'linear' or 'nearest'.")
 
 
@@ -158,6 +164,29 @@ def _refinement_mask(block: GridBlock, points: NDArray[np.float64]) -> NDArray[n
     return mask
 
 
+def _linear_refinement_stencil_mask(
+    block: GridBlock,
+    lower: NDArray[np.integer[Any]],
+    upper: NDArray[np.integer[Any]],
+    origin: NDArray[np.float64],
+    spacing: NDArray[np.float64],
+) -> NDArray[np.bool_]:
+    bounds = block.metadata.get("refinement_bounds")
+    if not bounds:
+        return np.ones(lower.shape[0], dtype=bool)
+
+    mask = np.ones(lower.shape[0], dtype=bool)
+    for dim, axis in enumerate(block.axes):
+        if axis not in bounds:
+            continue
+        lower_bound, upper_bound = bounds[axis]
+        lower_coordinate = origin[dim] + lower[:, dim] * spacing[dim]
+        upper_coordinate = origin[dim] + upper[:, dim] * spacing[dim]
+        mask &= lower_coordinate >= float(lower_bound)
+        mask &= upper_coordinate <= float(upper_bound)
+    return mask
+
+
 def _nearest(
     data: NDArray[np.floating[Any]],
     indices: NDArray[np.float64],
@@ -177,7 +206,12 @@ def _nearest(
 def _linear(
     data: NDArray[np.floating[Any]],
     indices: NDArray[np.float64],
-) -> tuple[NDArray[np.float64], NDArray[np.bool_]]:
+) -> tuple[
+    NDArray[np.float64],
+    NDArray[np.bool_],
+    NDArray[np.integer[Any]],
+    NDArray[np.integer[Any]],
+]:
     mask = np.ones(indices.shape[0], dtype=bool)
     lower = np.zeros(indices.shape, dtype=int)
     upper = np.zeros(indices.shape, dtype=int)
@@ -198,7 +232,7 @@ def _linear(
 
     values = np.full(indices.shape[0], np.nan, dtype=float)
     if not np.any(mask):
-        return values, mask
+        return values, mask, lower, upper
 
     inside_lower = lower[mask]
     inside_upper = upper[mask]
@@ -215,4 +249,4 @@ def _linear(
                 w2 = inside_weights[:, 2] if d2 else 1.0 - inside_weights[:, 2]
                 accum += data[i0, i1, i2] * w0 * w1 * w2
     values[mask] = accum
-    return values, mask
+    return values, mask, lower, upper
