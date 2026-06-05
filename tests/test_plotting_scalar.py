@@ -60,6 +60,45 @@ def test_plot_scalar_slice_applies_axis_ranges(tmp_path: Path) -> None:
     assert result.axes.get_ylim() == (0.25, 1.25)
 
 
+def test_plot_scalar_slice_defaults_axis_ranges_to_coarsest_level(tmp_path: Path) -> None:
+    coarse_left = GridBlock(
+        data=np.ones((2, 2), dtype=float),
+        axes=("y", "x"),
+        origin=(0.0, 0.0),
+        spacing=(1.0, 1.0),
+        level=0,
+        patch=0,
+    )
+    coarse_right = GridBlock(
+        data=np.ones((2, 2), dtype=float),
+        axes=("y", "x"),
+        origin=(-1.0, 2.0),
+        spacing=(1.0, 1.0),
+        level=0,
+        patch=1,
+    )
+    fine_outside_coarse_range = GridBlock(
+        data=np.ones((2, 2), dtype=float),
+        axes=("y", "x"),
+        origin=(-10.0, -10.0),
+        spacing=(1.0, 1.0),
+        level=1,
+        patch=0,
+    )
+    slice_data = SliceData(
+        field=FieldInfo(name="rho"),
+        iteration=0,
+        time=0.0,
+        plane="xy",
+        blocks=(coarse_left, coarse_right, fine_outside_coarse_range),
+    )
+
+    result = plot_scalar_slice(slice_data, output=tmp_path / "slice_coarse_range.png")
+
+    assert result.axes.get_xlim() == (0.0, 4.0)
+    assert result.axes.get_ylim() == (-1.0, 2.0)
+
+
 def test_plot_scalar_slice_uses_shared_norm_for_constant_blocks(tmp_path: Path) -> None:
     coarse = GridBlock(
         data=np.zeros((3, 3), dtype=float),

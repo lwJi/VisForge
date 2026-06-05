@@ -48,10 +48,12 @@ def plot_scalar_slice(
     plotted_blocks = tuple(sorted(data.blocks, key=lambda item: (item.level or 0, item.patch or 0)))
     limits = _color_limits(data.blocks, vmin=vmin, vmax=vmax)
     norm = Normalize(vmin=limits[0], vmax=limits[1])
+    block_extents: list[tuple[GridBlock, tuple[float, float, float, float]]] = []
     for block in plotted_blocks:
         block_data, extent = _valid_data_and_extent(block)
         if block_data.size == 0:
             continue
+        block_extents.append((block, extent))
         image = axes.imshow(
             _display_data(block_data, fill_value=limits[0]),
             origin="lower",
@@ -76,10 +78,15 @@ def plot_scalar_slice(
     x_axis, y_axis = _plot_axes(data.blocks[0])
     axes.set_xlabel(axis_label(x_axis))
     axes.set_ylabel(axis_label(y_axis))
+    default_xlim, default_ylim = _coarsest_level_limits(tuple(block_extents))
     if xlim is not None:
         axes.set_xlim(xlim)
+    else:
+        axes.set_xlim(default_xlim)
     if ylim is not None:
         axes.set_ylim(ylim)
+    else:
+        axes.set_ylim(default_ylim)
     axes.set_aspect("equal", adjustable="box")
     axes.set_title(title or _slice_title(data))
     figure.colorbar(image, ax=axes, label=field_label(data.field.name, data.field.units))
@@ -197,6 +204,23 @@ def _clip_extent(
     x0, x1, y0, y1 = candidate
     tx0, tx1, ty0, ty1 = target
     return max(x0, tx0), min(x1, tx1), max(y0, ty0), min(y1, ty1)
+
+
+def _coarsest_level_limits(
+    block_extents: tuple[tuple[GridBlock, tuple[float, float, float, float]], ...],
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    if not block_extents:
+        raise ValueError("SliceData contains no blocks to plot.")
+    coarsest_level = min(_level_key(block) for block, _ in block_extents)
+    extents = [extent for block, extent in block_extents if _level_key(block) == coarsest_level]
+    return (
+        (min(extent[0] for extent in extents), max(extent[1] for extent in extents)),
+        (min(extent[2] for extent in extents), max(extent[3] for extent in extents)),
+    )
+
+
+def _level_key(block: GridBlock) -> int:
+    return 0 if block.level is None else block.level
 
 
 def _plot_axes(block: GridBlock) -> tuple[str, str]:
