@@ -19,6 +19,10 @@ except ImportError:  # pragma: no cover
 
 PATCH_LEVEL_RE = re.compile(r"^(?P<base>.+)_patch(?P<patch>\d+)_lev(?P<level>\d+)$")
 BOXINBOX_RADIUS_RE = re.compile(r"BoxInBox::radius_(?P<region>\d+)\s*=\s*\[(?P<values>[^\]]+)\]")
+BOXINBOX_INDEXED_RADIUS_RE = re.compile(
+    r"BoxInBox::radius_(?P<region>\d+)\[(?P<index>\d+)\]\s*=\s*"
+    r"(?P<value>[+-]?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)"
+)
 CARPETX_BOUND_RE = re.compile(
     r"CarpetX::(?P<axis>[xyz])(?P<side>min|max)\s*=\s*(?P<value>[+-]?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)"
 )
@@ -35,18 +39,6 @@ class OpenPMDBackend:
         self._files = self.index.by_backend("openpmd")
         if not self._files:
             raise FileNotFoundError(f"No CarpetX openPMD .bp5 files found under {self.path}")
-        self._refinement_radii = _read_boxinbox_radii(self.path)
-        self._domain_bounds = _read_carpetx_domain_bounds(self.path)
-        if not self._refinement_radii:
-            for file in self._files:
-                self._refinement_radii = _read_boxinbox_radii(file.path)
-                if self._refinement_radii:
-                    break
-        if not self._domain_bounds:
-            for file in self._files:
-                self._domain_bounds = _read_carpetx_domain_bounds(file.path)
-                if self._domain_bounds:
-                    break
 
     def list_iterations(self) -> tuple[int, ...]:
         return tuple(sorted({file.iteration for file in self._files if file.iteration is not None}))
@@ -88,6 +80,7 @@ class OpenPMDBackend:
         series = io.Series(str(file.path), io.Access.read_only)
         try:
             opmd_iteration = _first_iteration(series)
+            refinement_radii, domain_bounds = _carpetx_metadata_from_iteration(opmd_iteration, file.path)
             time = _attribute(opmd_iteration, "time")
             blocks: list[GridBlock] = []
             selected_component: str | None = None
@@ -106,8 +99,8 @@ class OpenPMDBackend:
                     record_component,
                     mesh_name=mesh_name,
                     requested_plane=plane or file.plane,
-                    refinement_radii=self._refinement_radii,
-                    domain_bounds=self._domain_bounds,
+                    refinement_radii=refinement_radii,
+                    domain_bounds=domain_bounds,
                 )
                 blocks.append(block)
 
@@ -142,6 +135,7 @@ class OpenPMDBackend:
         series = io.Series(str(file.path), io.Access.read_only)
         try:
             opmd_iteration = _first_iteration(series)
+            refinement_radii, domain_bounds = _carpetx_metadata_from_iteration(opmd_iteration, file.path)
             time = _attribute(opmd_iteration, "time")
             blocks: list[GridBlock] = []
             selected_component: str | None = None
@@ -160,8 +154,8 @@ class OpenPMDBackend:
                         mesh,
                         record_component,
                         mesh_name=mesh_name,
-                        refinement_radii=self._refinement_radii,
-                        domain_bounds=self._domain_bounds,
+                        refinement_radii=refinement_radii,
+                        domain_bounds=domain_bounds,
                     )
                 )
 
@@ -457,26 +451,31 @@ def _patch_and_level(mesh_name: str) -> tuple[int | None, int | None]:
     return int(match.group("patch")), int(match.group("level"))
 
 
-def _read_boxinbox_radii(path: Path) -> tuple[float, ...]:
-    for parfile in _candidate_parfiles(path):
-        text = parfile.read_text(encoding="utf-8")
-        match = BOXINBOX_RADIUS_RE.search(text)
-        if match is None:
-            continue
-        values = []
-        for value in match.group("values").split(","):
-            values.append(float(value.strip()))
-        return tuple(values)
-    return ()
+def _carpetx_metadata_from_iteration(
+    opmd_iteration: Any,
+    source: Path,
+) -> tuple[tuple[float, ...], dict[str, tuple[float, float]]]:
+    parameters = _attribute(opmd_iteration, "AllParameters")
+    if not isinstance(parameters, str) or not parameters.strip():
+        raise ValueError(f"openPMD file {source} does not contain required AllParameters metadata.")
+    return _parse_boxinbox_radii(parameters), _parse_carpetx_domain_bounds(parameters)
 
 
-def _candidate_parfiles(path: Path) -> tuple[Path, ...]:
-    roots = [path if path.is_dir() else path.parent]
-    roots.extend(roots[0].parents[:4])
-    parfiles: list[Path] = []
-    for root in roots:
-        parfiles.extend(sorted(root.glob("*.par")))
-    return tuple(parfiles)
+def _parse_boxinbox_radii(parameters: str) -> tuple[float, ...]:
+    indexed: dict[int, dict[int, float]] = {}
+    for match in BOXINBOX_INDEXED_RADIUS_RE.finditer(parameters):
+        region = int(match.group("region"))
+        index = int(match.group("index"))
+        indexed.setdefault(region, {})[index] = float(match.group("value"))
+    if indexed:
+        region = min(indexed)
+        values = indexed[region]
+        return tuple(values[index] for index in sorted(values))
+
+    match = BOXINBOX_RADIUS_RE.search(parameters)
+    if match is None:
+        return ()
+    return tuple(float(value.strip()) for value in match.group("values").split(","))
 
 
 def _extent_from_block_values(
@@ -573,19 +572,14 @@ def _axis_bounds_extent(
     return max(x0, bx0), min(x1, bx1), max(y0, by0), min(y1, by1)
 
 
-def _read_carpetx_domain_bounds(path: Path) -> dict[str, tuple[float, float]]:
-    for parfile in _candidate_parfiles(path):
-        text = parfile.read_text(encoding="utf-8")
-        values: dict[str, dict[str, float]] = {}
-        for match in CARPETX_BOUND_RE.finditer(text):
-            axis = match.group("axis")
-            side = match.group("side")
-            values.setdefault(axis, {})[side] = float(match.group("value"))
-        bounds = {
-            axis: (sides["min"], sides["max"])
-            for axis, sides in values.items()
-            if "min" in sides and "max" in sides
-        }
-        if bounds:
-            return bounds
-    return {}
+def _parse_carpetx_domain_bounds(parameters: str) -> dict[str, tuple[float, float]]:
+    values: dict[str, dict[str, float]] = {}
+    for match in CARPETX_BOUND_RE.finditer(parameters):
+        axis = match.group("axis")
+        side = match.group("side")
+        values.setdefault(axis, {})[side] = float(match.group("value"))
+    return {
+        axis: (sides["min"], sides["max"])
+        for axis, sides in values.items()
+        if "min" in sides and "max" in sides
+    }
