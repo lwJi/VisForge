@@ -24,6 +24,7 @@ def test_plot_slice_mesh_defaults() -> None:
     assert options["mesh_linewidth"] == 0.15
     assert options["mesh_alpha"] == 0.75
     assert options["component"] is None
+    assert options["cmap"] == "viridis"
     assert options["scale"] == "linear"
     assert options["vmin"] is None
     assert options["vmax"] is None
@@ -113,6 +114,42 @@ def test_plot_slice_scale_option() -> None:
     assert options["scale"] == "log"
 
 
+def test_plot_slice_colormap_option() -> None:
+    parser = _build_parser()
+    args = parser.parse_args(
+        [
+            "plot-slice",
+            "dataset",
+            "--field",
+            "state",
+            "--cmap",
+            "plasma",
+            "--output",
+            "rho.png",
+        ]
+    )
+    options = _slice_options(args)
+    assert options["cmap"] == "plasma"
+
+
+def test_plot_slice_rejects_unknown_colormap() -> None:
+    parser = _build_parser()
+    args = parser.parse_args(
+        [
+            "plot-slice",
+            "dataset",
+            "--field",
+            "state",
+            "--cmap",
+            "not_a_cmap",
+            "--output",
+            "rho.png",
+        ]
+    )
+    with pytest.raises(ValueError, match="Unknown colormap 'not_a_cmap'"):
+        _slice_options(args)
+
+
 def test_plot_slice_config_file_supplies_defaults(tmp_path) -> None:
     config = tmp_path / "plot.yaml"
     config.write_text(
@@ -124,6 +161,7 @@ plot:
   iteration: 0
   plane: xz
   backend: openpmd
+  cmap: cividis
   vmin: -1
   vmax: 1
   output: gfc.png
@@ -147,6 +185,7 @@ view:
     assert options["iteration"] == 0
     assert options["plane"] == "xz"
     assert options["backend"] == "openpmd"
+    assert options["cmap"] == "cividis"
     assert options["show_mesh"] is True
     assert options["mesh_color"] == "cyan"
     assert options["mesh_linewidth"] == 0.2

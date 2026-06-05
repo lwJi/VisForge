@@ -155,6 +155,45 @@ def test_plot_scalar_slice_uses_log_norm(tmp_path: Path) -> None:
     assert result.axes.images[0].norm.vmax > result.axes.images[0].norm.vmin
 
 
+def test_plot_scalar_slice_uses_requested_colormap(tmp_path: Path) -> None:
+    block = GridBlock(
+        data=np.arange(9, dtype=float).reshape(3, 3),
+        axes=("y", "x"),
+        origin=(0.0, 0.0),
+        spacing=(1.0, 1.0),
+    )
+    slice_data = SliceData(
+        field=FieldInfo(name="rho"),
+        iteration=0,
+        time=0.0,
+        plane="xy",
+        blocks=(block,),
+    )
+
+    result = plot_scalar_slice(slice_data, output=tmp_path / "plasma.png", cmap="plasma")
+
+    assert result.axes.images[0].get_cmap().name == "plasma"
+
+
+def test_plot_scalar_slice_rejects_unknown_colormap(tmp_path: Path) -> None:
+    block = GridBlock(
+        data=np.arange(4, dtype=float).reshape(2, 2),
+        axes=("y", "x"),
+        origin=(0.0, 0.0),
+        spacing=(1.0, 1.0),
+    )
+    slice_data = SliceData(
+        field=FieldInfo(name="rho"),
+        iteration=0,
+        time=0.0,
+        plane="xy",
+        blocks=(block,),
+    )
+
+    with pytest.raises(ValueError, match="Unknown colormap 'not_a_cmap'"):
+        plot_scalar_slice(slice_data, output=tmp_path / "bad.png", cmap="not_a_cmap")
+
+
 def test_plot_scalar_slice_can_overlay_mesh(tmp_path: Path) -> None:
     block = GridBlock(
         data=np.arange(4, dtype=float).reshape(2, 2),

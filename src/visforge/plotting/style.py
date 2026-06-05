@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 
 DEFAULT_CMAP = "viridis"
+COLORMAP_SUGGESTIONS = ("viridis", "plasma", "inferno", "magma", "cividis")
 DEFAULT_FIGSIZE = (7.0, 5.0)
 LINE_FIGSIZE = (7.0, 4.0)
 PLOT_FONT_FAMILY = "STIXGeneral"
@@ -49,6 +50,23 @@ def configure_matplotlib_style() -> None:
             "figure.titlesize": 16,
         }
     )
+
+
+def normalize_colormap(name: str) -> str:
+    """Return a valid Matplotlib colormap name or raise a concise user error."""
+
+    normalized = str(name).strip()
+    if not normalized:
+        raise ValueError("Colormap name cannot be empty.")
+    configure_matplotlib_environment()
+    import matplotlib as mpl
+
+    try:
+        mpl.colormaps[normalized]
+    except KeyError:
+        suggestions = ", ".join(COLORMAP_SUGGESTIONS)
+        raise ValueError(f"Unknown colormap '{name}'. Try one of: {suggestions}.") from None
+    return normalized
 
 
 def field_label(name: str, units: str | None = None) -> str:

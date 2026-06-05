@@ -5,6 +5,7 @@ plot:
   component: testsubcyclingmc2_rho
   iteration: 360
   backend: openpmd
+  cmap: plasma
   vmin: -2.0
   vmax: +1.6
   output: rho_sample_plane.png

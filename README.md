@@ -47,6 +47,7 @@ $HOME/Misc/venv/py3/bin/visforge plot-slice /Users/liwei/docker-workspace/data/T
   --plane xy \
   --backend openpmd \
   --show-mesh \
+  --cmap cividis \
   --mesh-alpha 0.75 \
   --xlim -4 4 \
   --ylim -4 4 \
@@ -61,6 +62,7 @@ $HOME/Misc/venv/py3/bin/visforge plot-slice /Users/liwei/docker-workspace/data/T
   --iteration 0 \
   --plane xy \
   --backend openpmd \
+  --cmap plasma \
   --scale log \
   --output rho_xy_log.png
 ```

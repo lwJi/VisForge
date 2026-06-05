@@ -5,6 +5,7 @@ plot:
   iteration: 0
   plane: xz
   backend: openpmd
+  cmap: cividis
   output: gfc.png
 
 view:

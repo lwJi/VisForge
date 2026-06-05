@@ -9,6 +9,7 @@ from visforge.data.model import PlaneSpec
 from visforge.data.plane import sample_field_on_plane
 from visforge.plotting.base import PlotResult
 from visforge.plotting.scalar import plot_scalar_slice
+from visforge.plotting.style import DEFAULT_CMAP
 
 
 def make_slice_plot(
@@ -28,6 +29,7 @@ def make_slice_plot(
     mesh_max_lines: int | None = None,
     xlim: tuple[float, float] | None = None,
     ylim: tuple[float, float] | None = None,
+    cmap: str = DEFAULT_CMAP,
     scale: str = "linear",
     vmin: float | None = None,
     vmax: float | None = None,
@@ -50,6 +52,7 @@ def make_slice_plot(
         mesh_max_lines=mesh_max_lines,
         xlim=xlim,
         ylim=ylim,
+        cmap=cmap,
         scale=scale,
         vmin=vmin,
         vmax=vmax,

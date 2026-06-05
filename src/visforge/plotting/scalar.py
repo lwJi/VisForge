@@ -15,6 +15,7 @@ from visforge.plotting.style import (
     axis_label,
     configure_matplotlib_style,
     field_label,
+    normalize_colormap,
     plane_label,
 )
 
@@ -47,6 +48,7 @@ def plot_scalar_slice(
 
     figure, axes = plt.subplots(figsize=DEFAULT_FIGSIZE)
     image = None
+    cmap = normalize_colormap(cmap)
     plotted_blocks = tuple(sorted(data.blocks, key=lambda item: (item.level or 0, item.patch or 0)))
     scale = _normalize_color_scale(scale)
     limits = _color_limits(data.blocks, vmin=vmin, vmax=vmax, scale=scale)

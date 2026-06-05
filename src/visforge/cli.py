@@ -8,6 +8,7 @@ from typing import Any
 
 from visforge.config import bool_value, load_config, range_value, section
 from visforge.data.model import PlaneSpec
+from visforge.plotting.style import DEFAULT_CMAP, normalize_colormap
 from visforge.workflows.inspect import format_summary, inspect_dataset
 from visforge.workflows.line_plot import make_line_plot
 from visforge.workflows.slice_plot import make_slice_plot
@@ -125,6 +126,10 @@ def _build_parser() -> argparse.ArgumentParser:
     slice_parser.add_argument("--vmin", type=float, help="Minimum scalar value for the color range")
     slice_parser.add_argument("--vmax", type=float, help="Maximum scalar value for the color range")
     slice_parser.add_argument(
+        "--cmap",
+        help="Matplotlib colormap name for scalar values",
+    )
+    slice_parser.add_argument(
         "--scale",
         choices=("linear", "log"),
         help="Color normalization scale for scalar values",
@@ -156,8 +161,8 @@ def _plot_line(args: argparse.Namespace) -> int:
 
 
 def _plot_slice(args: argparse.Namespace) -> int:
-    options = _slice_options(args)
     try:
+        options = _slice_options(args)
         result = make_slice_plot(
             options["path"],
             field=options["field"],
@@ -174,6 +179,7 @@ def _plot_slice(args: argparse.Namespace) -> int:
             mesh_max_lines=options["mesh_max_lines"],
             xlim=options["xlim"],
             ylim=options["ylim"],
+            cmap=options["cmap"],
             scale=options["scale"],
             vmin=options["vmin"],
             vmax=options["vmax"],
@@ -207,6 +213,7 @@ def _slice_options(args: argparse.Namespace) -> dict[str, object]:
         "mesh_max_lines": _choose(args.mesh_max_lines, mesh.get("max_lines")),
         "xlim": _choose(_range_tuple(args.xlim), range_value(view.get("xlim"))),
         "ylim": _choose(_range_tuple(args.ylim), range_value(view.get("ylim"))),
+        "cmap": normalize_colormap(_choose(args.cmap, plot.get("cmap"), DEFAULT_CMAP)),
         "scale": _choose(args.scale, plot.get("scale"), "linear"),
         "vmin": _choose(args.vmin, plot.get("vmin")),
         "vmax": _choose(args.vmax, plot.get("vmax")),
