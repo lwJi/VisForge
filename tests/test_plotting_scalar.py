@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from visforge.data.model import FieldInfo, GridBlock, SliceData
 from visforge.plotting.scalar import (
@@ -130,6 +131,30 @@ def test_plot_scalar_slice_uses_shared_norm_for_constant_blocks(tmp_path: Path) 
     assert result.axes.images[0].norm.vmax == 0.1
 
 
+def test_plot_scalar_slice_uses_log_norm(tmp_path: Path) -> None:
+    from matplotlib.colors import LogNorm
+
+    block = GridBlock(
+        data=np.array([[0.0, 1.0, 10.0], [100.0, np.nan, -5.0]], dtype=float),
+        axes=("y", "x"),
+        origin=(0.0, 0.0),
+        spacing=(1.0, 1.0),
+    )
+    slice_data = SliceData(
+        field=FieldInfo(name="rho"),
+        iteration=0,
+        time=0.0,
+        plane="xy",
+        blocks=(block,),
+    )
+
+    result = plot_scalar_slice(slice_data, output=tmp_path / "log.png", scale="log")
+
+    assert isinstance(result.axes.images[0].norm, LogNorm)
+    assert result.axes.images[0].norm.vmin > 0.0
+    assert result.axes.images[0].norm.vmax > result.axes.images[0].norm.vmin
+
+
 def test_plot_scalar_slice_can_overlay_mesh(tmp_path: Path) -> None:
     block = GridBlock(
         data=np.arange(4, dtype=float).reshape(2, 2),
@@ -203,6 +228,32 @@ def test_color_limits_expand_constant_data() -> None:
     )
 
     assert _color_limits((block,), vmin=None, vmax=None) == (4.95, 5.05)
+
+
+def test_color_limits_log_scale_uses_positive_data_only() -> None:
+    block = GridBlock(
+        data=np.array([[-10.0, 0.0, 1.0], [10.0, 100.0, np.inf]], dtype=float),
+        axes=("z", "x"),
+        origin=(0.0, 0.0),
+        spacing=(1.0, 1.0),
+    )
+
+    lower, upper = _color_limits((block,), vmin=None, vmax=None, scale="log")
+
+    assert lower == pytest.approx(1.18)
+    assert upper == pytest.approx(98.2)
+
+
+def test_color_limits_log_scale_rejects_non_positive_vmin() -> None:
+    block = GridBlock(
+        data=np.array([[1.0, 10.0]], dtype=float),
+        axes=("z", "x"),
+        origin=(0.0, 0.0),
+        spacing=(1.0, 1.0),
+    )
+
+    with pytest.raises(ValueError, match="vmin"):
+        _color_limits((block,), vmin=0.0, vmax=None, scale="log")
 
 
 def test_valid_data_and_extent_respects_cell_centered_position() -> None:

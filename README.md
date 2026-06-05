@@ -53,6 +53,18 @@ $HOME/Misc/venv/py3/bin/visforge plot-slice /Users/liwei/docker-workspace/data/T
   --output gfc_xy_mesh.png
 ```
 
+Use logarithmic color normalization for positive-valued scalar fields:
+
+```bash
+$HOME/Misc/venv/py3/bin/visforge plot-slice /Users/liwei/docker-workspace/data/TestOutput2D/testoutput2d \
+  --field rho \
+  --iteration 0 \
+  --plane xy \
+  --backend openpmd \
+  --scale log \
+  --output rho_xy_log.png
+```
+
 Use a YAML config file instead of passing every option on the command line:
 
 ```bash

@@ -19,6 +19,7 @@ from visforge.plotting.style import (
 )
 
 DEFAULT_EXTREME_VALUE_LIMIT = 1.0e100
+COLOR_SCALES = ("linear", "log")
 
 
 def plot_scalar_slice(
@@ -27,6 +28,7 @@ def plot_scalar_slice(
     output: str | Path | None = None,
     title: str | None = None,
     cmap: str = DEFAULT_CMAP,
+    scale: str = "linear",
     vmin: float | None = None,
     vmax: float | None = None,
     show_mesh: bool = False,
@@ -41,13 +43,15 @@ def plot_scalar_slice(
 
     configure_matplotlib_style()
     import matplotlib.pyplot as plt
-    from matplotlib.colors import Normalize
+    from matplotlib.colors import LogNorm, Normalize
 
     figure, axes = plt.subplots(figsize=DEFAULT_FIGSIZE)
     image = None
     plotted_blocks = tuple(sorted(data.blocks, key=lambda item: (item.level or 0, item.patch or 0)))
-    limits = _color_limits(data.blocks, vmin=vmin, vmax=vmax)
-    norm = Normalize(vmin=limits[0], vmax=limits[1])
+    scale = _normalize_color_scale(scale)
+    limits = _color_limits(data.blocks, vmin=vmin, vmax=vmax, scale=scale)
+    norm_class = LogNorm if scale == "log" else Normalize
+    norm = norm_class(vmin=limits[0], vmax=limits[1])
     block_extents: list[tuple[GridBlock, tuple[float, float, float, float]]] = []
     for block in plotted_blocks:
         block_data, extent = _valid_data_and_extent(block)
@@ -55,7 +59,7 @@ def plot_scalar_slice(
             continue
         block_extents.append((block, extent))
         image = axes.imshow(
-            _display_data(block_data, fill_value=limits[0]),
+            _display_data(block_data, fill_value=limits[0], scale=scale),
             origin="lower",
             extent=extent,
             aspect="equal",
@@ -325,19 +329,46 @@ def _color_limits(
     *,
     vmin: float | None,
     vmax: float | None,
+    scale: str = "linear",
 ) -> tuple[float | None, float | None]:
+    scale = _normalize_color_scale(scale)
+    _validate_color_limits(vmin=vmin, vmax=vmax, scale=scale)
     arrays = [np.asarray(_valid_data_and_extent(block)[0], dtype=float).ravel() for block in blocks]
     arrays = [array for array in arrays if array.size]
     if not arrays:
-        return _fallback_color_limits(vmin, vmax)
+        return _fallback_color_limits(vmin, vmax, scale=scale)
     finite = np.concatenate(arrays)
     finite = finite[np.isfinite(finite)]
     finite = finite[np.abs(finite) < DEFAULT_EXTREME_VALUE_LIMIT]
+    if scale == "log":
+        finite = finite[finite > 0.0]
     if finite.size == 0:
-        return _fallback_color_limits(vmin, vmax)
+        return _fallback_color_limits(vmin, vmax, scale=scale)
     lower = float(np.nanpercentile(finite, 1)) if vmin is None else vmin
     upper = float(np.nanpercentile(finite, 99)) if vmax is None else vmax
     return _expand_degenerate_limits(lower, upper)
+
+
+def _normalize_color_scale(scale: str) -> str:
+    normalized = scale.strip().lower()
+    if normalized not in COLOR_SCALES:
+        choices = ", ".join(COLOR_SCALES)
+        raise ValueError(f"Color scale must be one of: {choices}.")
+    return normalized
+
+
+def _validate_color_limits(
+    *,
+    vmin: float | None,
+    vmax: float | None,
+    scale: str,
+) -> None:
+    if scale != "log":
+        return
+    if vmin is not None and vmin <= 0.0:
+        raise ValueError("Log color scale requires --vmin to be greater than zero.")
+    if vmax is not None and vmax <= 0.0:
+        raise ValueError("Log color scale requires --vmax to be greater than zero.")
 
 
 def _expand_degenerate_limits(
@@ -357,16 +388,22 @@ def _expand_degenerate_limits(
 def _fallback_color_limits(
     vmin: float | None,
     vmax: float | None,
+    *,
+    scale: str = "linear",
 ) -> tuple[float | None, float | None]:
     if vmin is None and vmax is None:
+        if scale == "log":
+            raise ValueError("Log color scale requires positive finite data or a positive vmin/vmax.")
         return _expand_degenerate_limits(0.0, 0.0)
     value = vmax if vmin is None else vmin
     return _expand_degenerate_limits(value, value)
 
 
-def _display_data(data: np.ndarray, *, fill_value: float | None):
+def _display_data(data: np.ndarray, *, fill_value: float | None, scale: str = "linear"):
     values = np.array(data, dtype=float, copy=True)
     valid = np.isfinite(values) & (np.abs(values) < DEFAULT_EXTREME_VALUE_LIMIT)
+    if _normalize_color_scale(scale) == "log":
+        valid &= values > 0.0
     values[~valid] = 0.0 if fill_value is None else fill_value
     return values
 

@@ -28,6 +28,7 @@ def make_slice_plot(
     mesh_max_lines: int | None = None,
     xlim: tuple[float, float] | None = None,
     ylim: tuple[float, float] | None = None,
+    scale: str = "linear",
     vmin: float | None = None,
     vmax: float | None = None,
 ) -> PlotResult:
@@ -49,6 +50,7 @@ def make_slice_plot(
         mesh_max_lines=mesh_max_lines,
         xlim=xlim,
         ylim=ylim,
+        scale=scale,
         vmin=vmin,
         vmax=vmax,
     )

@@ -124,6 +124,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     slice_parser.add_argument("--vmin", type=float, help="Minimum scalar value for the color range")
     slice_parser.add_argument("--vmax", type=float, help="Maximum scalar value for the color range")
+    slice_parser.add_argument(
+        "--scale",
+        choices=("linear", "log"),
+        help="Color normalization scale for scalar values",
+    )
     slice_parser.add_argument("--output", type=Path)
     slice_parser.set_defaults(func=_plot_slice)
     return parser
@@ -169,6 +174,7 @@ def _plot_slice(args: argparse.Namespace) -> int:
             mesh_max_lines=options["mesh_max_lines"],
             xlim=options["xlim"],
             ylim=options["ylim"],
+            scale=options["scale"],
             vmin=options["vmin"],
             vmax=options["vmax"],
         )
@@ -201,6 +207,7 @@ def _slice_options(args: argparse.Namespace) -> dict[str, object]:
         "mesh_max_lines": _choose(args.mesh_max_lines, mesh.get("max_lines")),
         "xlim": _choose(_range_tuple(args.xlim), range_value(view.get("xlim"))),
         "ylim": _choose(_range_tuple(args.ylim), range_value(view.get("ylim"))),
+        "scale": _choose(args.scale, plot.get("scale"), "linear"),
         "vmin": _choose(args.vmin, plot.get("vmin")),
         "vmax": _choose(args.vmax, plot.get("vmax")),
     }

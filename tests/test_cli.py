@@ -24,6 +24,7 @@ def test_plot_slice_mesh_defaults() -> None:
     assert options["mesh_linewidth"] == 0.15
     assert options["mesh_alpha"] == 0.75
     assert options["component"] is None
+    assert options["scale"] == "linear"
     assert options["vmin"] is None
     assert options["vmax"] is None
     assert args.xlim is None
@@ -94,6 +95,24 @@ def test_plot_slice_color_range_options() -> None:
     assert options["vmax"] == 1.5
 
 
+def test_plot_slice_scale_option() -> None:
+    parser = _build_parser()
+    args = parser.parse_args(
+        [
+            "plot-slice",
+            "dataset",
+            "--field",
+            "state",
+            "--scale",
+            "log",
+            "--output",
+            "rho.png",
+        ]
+    )
+    options = _slice_options(args)
+    assert options["scale"] == "log"
+
+
 def test_plot_slice_config_file_supplies_defaults(tmp_path) -> None:
     config = tmp_path / "plot.yaml"
     config.write_text(
@@ -136,6 +155,24 @@ view:
     assert options["vmax"] == 1.0
     assert options["xlim"] == (-4.0, 4.0)
     assert options["ylim"] == (-3.0, 3.0)
+
+
+def test_plot_slice_config_file_supplies_scale(tmp_path) -> None:
+    config = tmp_path / "plot.yaml"
+    config.write_text(
+        """
+dataset: /data/run
+plot:
+  field: rho
+  scale: log
+  output: rho.png
+""",
+        encoding="utf-8",
+    )
+    parser = _build_parser()
+    args = parser.parse_args(["plot-slice", "--config", str(config)])
+    options = _slice_options(args)
+    assert options["scale"] == "log"
 
 
 def test_plot_slice_cli_overrides_config(tmp_path) -> None:
