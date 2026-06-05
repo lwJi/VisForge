@@ -8,6 +8,7 @@ import pytest
 from visforge.data.model import FieldInfo, GridBlock, SliceData
 from visforge.plotting.scalar import (
     _color_limits,
+    _display_data,
     _mesh_line_positions,
     _valid_data_and_extent,
     plot_scalar_slice,
@@ -293,6 +294,32 @@ def test_color_limits_log_scale_rejects_non_positive_vmin() -> None:
 
     with pytest.raises(ValueError, match="vmin"):
         _color_limits((block,), vmin=0.0, vmax=None, scale="log")
+
+
+def test_display_data_masks_invalid_values() -> None:
+    display = _display_data(
+        np.array(
+            [
+                [1.0, np.nan],
+                [np.inf, 2.0e100],
+            ],
+            dtype=float,
+        )
+    )
+
+    assert np.ma.isMaskedArray(display)
+    assert display.mask.tolist() == [
+        [False, True],
+        [True, True],
+    ]
+    assert display[0, 0] == 1.0
+
+
+def test_display_data_masks_non_positive_log_values() -> None:
+    display = _display_data(np.array([[0.0, -1.0, 2.0]], dtype=float), scale="log")
+
+    assert np.ma.isMaskedArray(display)
+    assert display.mask.tolist() == [[True, True, False]]
 
 
 def test_valid_data_and_extent_respects_cell_centered_position() -> None:

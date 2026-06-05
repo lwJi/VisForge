@@ -48,7 +48,7 @@ def plot_scalar_slice(
 
     figure, axes = plt.subplots(figsize=DEFAULT_FIGSIZE)
     image = None
-    cmap = normalize_colormap(cmap)
+    cmap = _masked_colormap(normalize_colormap(cmap))
     plotted_blocks = tuple(sorted(data.blocks, key=lambda item: (item.level or 0, item.patch or 0)))
     scale = _normalize_color_scale(scale)
     limits = _color_limits(data.blocks, vmin=vmin, vmax=vmax, scale=scale)
@@ -61,7 +61,7 @@ def plot_scalar_slice(
             continue
         block_extents.append((block, extent))
         image = axes.imshow(
-            _display_data(block_data, fill_value=limits[0], scale=scale),
+            _display_data(block_data, scale=scale),
             origin="lower",
             extent=extent,
             aspect="equal",
@@ -401,13 +401,20 @@ def _fallback_color_limits(
     return _expand_degenerate_limits(value, value)
 
 
-def _display_data(data: np.ndarray, *, fill_value: float | None, scale: str = "linear"):
+def _masked_colormap(name: str):
+    import matplotlib as mpl
+
+    cmap = mpl.colormaps[name].copy()
+    cmap.set_bad(alpha=0.0)
+    return cmap
+
+
+def _display_data(data: np.ndarray, *, scale: str = "linear"):
     values = np.array(data, dtype=float, copy=True)
     valid = np.isfinite(values) & (np.abs(values) < DEFAULT_EXTREME_VALUE_LIMIT)
     if _normalize_color_scale(scale) == "log":
         valid &= values > 0.0
-    values[~valid] = 0.0 if fill_value is None else fill_value
-    return values
+    return np.ma.masked_where(~valid, values)
 
 
 def _slice_title(data: SliceData) -> str:
