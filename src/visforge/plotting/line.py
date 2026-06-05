@@ -6,7 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from visforge.data.model import LineData
-from visforge.plotting.base import PlotLabels, PlotResult
+from visforge.plotting.base import PlotLabels, PlotResult, format_title_template
 from visforge.plotting.output import save_figure
 from visforge.plotting.style import (
     LINE_FIGSIZE,
@@ -35,7 +35,7 @@ def plot_line(
     axes.set_xlabel(labels.xlabel or axis_label(line.axis))
     axes.set_ylabel(labels.ylabel or field_label(line.field.name, line.field.units))
     axes.grid(True, color="0.85", linewidth=0.8)
-    axes.set_title(labels.title or _line_title(line))
+    axes.set_title(_resolve_title(line, labels.title) or _line_title(line))
     if labels.legend is not None:
         axes.legend()
 
@@ -49,6 +49,17 @@ def _line_title(line: LineData) -> str:
     if line.time is None:
         return f"{label} along {axis}, iteration {line.iteration}"
     return f"{label} along {axis}, iteration {line.iteration}, $t={line.time:g}$"
+
+
+def _resolve_title(line: LineData, title: str | None) -> str | None:
+    return format_title_template(
+        title,
+        field=line.field.name,
+        units=line.field.units,
+        iteration=line.iteration,
+        time=line.time,
+        axis=line.axis,
+    )
 
 
 def _resolve_labels(labels: PlotLabels | None, *, title: str | None) -> PlotLabels:

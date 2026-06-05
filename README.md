@@ -62,6 +62,19 @@ $HOME/Misc/venv/py3/bin/visforge plot-slice /Users/liwei/docker-workspace/data/T
   --output gfc_xy_mesh.png
 ```
 
+Custom plot titles can include metadata placeholders such as `{iteration}`,
+`{time:g}`, `{field}`, `{plane}`, and `{axis}`. For example:
+
+```bash
+$HOME/Misc/venv/py3/bin/visforge plot-slice /Users/liwei/docker-workspace/data/TestOutput2D/testoutput2d \
+  --field B_x \
+  --iteration 0 \
+  --plane xy \
+  --backend openpmd \
+  --title '$B_x$ at iteration {iteration}, $t={time:g}$' \
+  --output B_x_xy.png
+```
+
 Use logarithmic color normalization for positive-valued scalar fields:
 
 ```bash

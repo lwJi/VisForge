@@ -95,6 +95,54 @@ def test_plot_scalar_slice_applies_label_overrides(tmp_path: Path) -> None:
     assert result.figure.axes[-1].get_ylabel() == "Density"
 
 
+def test_plot_scalar_slice_formats_title_template(tmp_path: Path) -> None:
+    block = GridBlock(
+        data=np.arange(9, dtype=float).reshape(3, 3),
+        axes=("y", "x"),
+        origin=(0.0, 0.0),
+        spacing=(0.5, 0.5),
+    )
+    slice_data = SliceData(
+        field=FieldInfo(name="B_x"),
+        iteration=7,
+        time=1.25,
+        plane="xz",
+        blocks=(block,),
+    )
+
+    result = plot_scalar_slice(
+        slice_data,
+        output=tmp_path / "slice_title_template.png",
+        labels=PlotLabels(title="$B_x$\niteration {iteration}, $t={time:g}$ on {plane}"),
+    )
+
+    assert result.axes.get_title() == "$B_x$\niteration 7, $t=1.25$ on xz"
+
+
+def test_plot_scalar_slice_title_template_preserves_latex_braces(tmp_path: Path) -> None:
+    block = GridBlock(
+        data=np.arange(9, dtype=float).reshape(3, 3),
+        axes=("y", "x"),
+        origin=(0.0, 0.0),
+        spacing=(0.5, 0.5),
+    )
+    slice_data = SliceData(
+        field=FieldInfo(name="rho"),
+        iteration=3,
+        time=None,
+        plane="xy",
+        blocks=(block,),
+    )
+
+    result = plot_scalar_slice(
+        slice_data,
+        output=tmp_path / "slice_latex_title.png",
+        labels=PlotLabels(title=r"$\rho_{\rm b}$, iteration {iteration}"),
+    )
+
+    assert result.axes.get_title() == r"$\rho_{\rm b}$, iteration 3"
+
+
 def test_plot_scalar_slice_defaults_axis_ranges_to_coarsest_level(tmp_path: Path) -> None:
     coarse_left = GridBlock(
         data=np.ones((2, 2), dtype=float),

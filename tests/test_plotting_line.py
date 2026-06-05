@@ -50,3 +50,22 @@ def test_plot_line_applies_label_overrides(tmp_path: Path) -> None:
     assert result.axes.get_ylabel() == "Density"
     assert result.axes.get_legend() is not None
     assert [text.get_text() for text in result.axes.get_legend().get_texts()] == ["rho sample"]
+
+
+def test_plot_line_formats_title_template(tmp_path: Path) -> None:
+    line = LineData(
+        field=FieldInfo(name="rho"),
+        iteration=12,
+        time=2.5,
+        axis="x",
+        coordinate=np.array([0.0, 1.0, 2.0]),
+        values=np.array([1.0, 3.0, 2.0]),
+    )
+
+    result = plot_line(
+        line,
+        output=tmp_path / "line_title_template.png",
+        labels=PlotLabels(title="{field} along {axis}, iteration {iteration}, $t={time:.1f}$"),
+    )
+
+    assert result.axes.get_title() == "rho along x, iteration 12, $t=2.5$"

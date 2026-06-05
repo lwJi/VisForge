@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 
 from visforge.data.model import GridBlock, SliceData
-from visforge.plotting.base import PlotLabels, PlotResult
+from visforge.plotting.base import PlotLabels, PlotResult, format_title_template
 from visforge.plotting.output import save_figure
 from visforge.plotting.style import (
     DEFAULT_CMAP,
@@ -97,7 +97,7 @@ def plot_scalar_slice(
     else:
         axes.set_ylim(default_ylim)
     axes.set_aspect("equal", adjustable="box")
-    axes.set_title(labels.title or _slice_title(data))
+    axes.set_title(_resolve_title(data, labels.title) or _slice_title(data))
     figure.colorbar(
         image,
         ax=axes,
@@ -430,6 +430,17 @@ def _slice_title(data: SliceData) -> str:
     if data.time is None:
         return f"{label} {plane}, iteration {data.iteration}"
     return f"{label} {plane}, iteration {data.iteration}, $t={data.time:g}$"
+
+
+def _resolve_title(data: SliceData, title: str | None) -> str | None:
+    return format_title_template(
+        title,
+        field=data.field.name,
+        units=data.field.units,
+        iteration=data.iteration,
+        time=data.time,
+        plane=data.plane,
+    )
 
 
 def _resolve_labels(labels: PlotLabels | None, *, title: str | None) -> PlotLabels:
