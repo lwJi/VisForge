@@ -7,7 +7,7 @@ from pathlib import Path
 from visforge.data.registry import open_dataset
 from visforge.data.model import PlaneSpec
 from visforge.data.plane import sample_field_on_plane
-from visforge.plotting.base import PlotResult
+from visforge.plotting.base import PlotLabels, PlotResult
 from visforge.plotting.scalar import plot_scalar_slice
 from visforge.plotting.style import DEFAULT_CMAP
 
@@ -33,6 +33,7 @@ def make_slice_plot(
     scale: str = "linear",
     vmin: float | None = None,
     vmax: float | None = None,
+    labels: PlotLabels | None = None,
 ) -> PlotResult:
     if plane is not None and sample_plane is not None:
         raise ValueError("Use either an axis-aligned plane or sample_plane, not both.")
@@ -56,4 +57,5 @@ def make_slice_plot(
         scale=scale,
         vmin=vmin,
         vmax=vmax,
+        labels=labels,
     )

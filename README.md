@@ -35,6 +35,10 @@ Plot a TSV line output:
 $HOME/Misc/venv/py3/bin/visforge plot-line /Users/liwei/docker-workspace/data/TestOutput2D/testoutput2d \
   --field gfc \
   --axis x \
+  --title "gfc along x" \
+  --xlabel "x" \
+  --ylabel "gfc" \
+  --legend "gfc" \
   --output gfc_x.png
 ```
 
@@ -48,6 +52,10 @@ $HOME/Misc/venv/py3/bin/visforge plot-slice /Users/liwei/docker-workspace/data/T
   --backend openpmd \
   --show-mesh \
   --cmap cividis \
+  --title "gfc on xy plane" \
+  --xlabel "x" \
+  --ylabel "y" \
+  --colorbar "gfc" \
   --mesh-alpha 0.75 \
   --xlim -4 4 \
   --ylim -4 4 \

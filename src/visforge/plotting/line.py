@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from visforge.data.model import LineData
-from visforge.plotting.base import PlotResult
+from visforge.plotting.base import PlotLabels, PlotResult
 from visforge.plotting.output import save_figure
 from visforge.plotting.style import (
     LINE_FIGSIZE,
@@ -19,6 +20,7 @@ def plot_line(
     line: LineData,
     *,
     output: str | Path | None = None,
+    labels: PlotLabels | None = None,
     title: str | None = None,
     color: str = "tab:blue",
 ) -> PlotResult:
@@ -28,11 +30,14 @@ def plot_line(
     import matplotlib.pyplot as plt
 
     figure, axes = plt.subplots(figsize=LINE_FIGSIZE)
-    axes.plot(line.coordinate, line.values, color=color, linewidth=1.5)
-    axes.set_xlabel(axis_label(line.axis))
-    axes.set_ylabel(field_label(line.field.name, line.field.units))
+    labels = _resolve_labels(labels, title=title)
+    axes.plot(line.coordinate, line.values, color=color, linewidth=1.5, label=labels.legend)
+    axes.set_xlabel(labels.xlabel or axis_label(line.axis))
+    axes.set_ylabel(labels.ylabel or field_label(line.field.name, line.field.units))
     axes.grid(True, color="0.85", linewidth=0.8)
-    axes.set_title(title or _line_title(line))
+    axes.set_title(labels.title or _line_title(line))
+    if labels.legend is not None:
+        axes.legend()
 
     saved = save_figure(figure, output)
     return PlotResult(figure=figure, axes=axes, output=saved)
@@ -44,3 +49,11 @@ def _line_title(line: LineData) -> str:
     if line.time is None:
         return f"{label} along {axis}, iteration {line.iteration}"
     return f"{label} along {axis}, iteration {line.iteration}, $t={line.time:g}$"
+
+
+def _resolve_labels(labels: PlotLabels | None, *, title: str | None) -> PlotLabels:
+    if labels is None:
+        return PlotLabels(title=title)
+    if labels.title is None and title is not None:
+        return replace(labels, title=title)
+    return labels

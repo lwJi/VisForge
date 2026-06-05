@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
 
 from visforge.data.model import GridBlock, SliceData
-from visforge.plotting.base import PlotResult
+from visforge.plotting.base import PlotLabels, PlotResult
 from visforge.plotting.output import save_figure
 from visforge.plotting.style import (
     DEFAULT_CMAP,
@@ -27,6 +28,7 @@ def plot_scalar_slice(
     data: SliceData,
     *,
     output: str | Path | None = None,
+    labels: PlotLabels | None = None,
     title: str | None = None,
     cmap: str = DEFAULT_CMAP,
     scale: str = "linear",
@@ -46,6 +48,7 @@ def plot_scalar_slice(
     import matplotlib.pyplot as plt
     from matplotlib.colors import LogNorm, Normalize
 
+    labels = _resolve_labels(labels, title=title)
     figure, axes = plt.subplots(figsize=DEFAULT_FIGSIZE)
     image = None
     cmap = _masked_colormap(normalize_colormap(cmap))
@@ -82,8 +85,8 @@ def plot_scalar_slice(
         )
 
     x_axis, y_axis = _plot_axes(data.blocks[0])
-    axes.set_xlabel(axis_label(x_axis))
-    axes.set_ylabel(axis_label(y_axis))
+    axes.set_xlabel(labels.xlabel or axis_label(x_axis))
+    axes.set_ylabel(labels.ylabel or axis_label(y_axis))
     default_xlim, default_ylim = _coarsest_level_limits(tuple(block_extents))
     if xlim is not None:
         axes.set_xlim(xlim)
@@ -94,8 +97,12 @@ def plot_scalar_slice(
     else:
         axes.set_ylim(default_ylim)
     axes.set_aspect("equal", adjustable="box")
-    axes.set_title(title or _slice_title(data))
-    figure.colorbar(image, ax=axes, label=field_label(data.field.name, data.field.units))
+    axes.set_title(labels.title or _slice_title(data))
+    figure.colorbar(
+        image,
+        ax=axes,
+        label=labels.colorbar or field_label(data.field.name, data.field.units),
+    )
 
     saved = save_figure(figure, output)
     return PlotResult(figure=figure, axes=axes, output=saved)
@@ -423,3 +430,11 @@ def _slice_title(data: SliceData) -> str:
     if data.time is None:
         return f"{label} {plane}, iteration {data.iteration}"
     return f"{label} {plane}, iteration {data.iteration}, $t={data.time:g}$"
+
+
+def _resolve_labels(labels: PlotLabels | None, *, title: str | None) -> PlotLabels:
+    if labels is None:
+        return PlotLabels(title=title)
+    if labels.title is None and title is not None:
+        return replace(labels, title=title)
+    return labels

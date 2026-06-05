@@ -8,6 +8,17 @@ from typing import Any
 
 
 @dataclass(frozen=True)
+class PlotLabels:
+    """User-provided plot text overrides."""
+
+    title: str | None = None
+    xlabel: str | None = None
+    ylabel: str | None = None
+    legend: str | None = None
+    colorbar: str | None = None
+
+
+@dataclass(frozen=True)
 class PlotResult:
     """Result of creating a plot."""
 

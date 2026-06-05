@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from visforge.data.model import FieldInfo, GridBlock, SliceData
+from visforge.plotting.base import PlotLabels
 from visforge.plotting.scalar import (
     _color_limits,
     _display_data,
@@ -60,6 +61,38 @@ def test_plot_scalar_slice_applies_axis_ranges(tmp_path: Path) -> None:
     )
     assert result.axes.get_xlim() == (-0.25, 0.75)
     assert result.axes.get_ylim() == (0.25, 1.25)
+
+
+def test_plot_scalar_slice_applies_label_overrides(tmp_path: Path) -> None:
+    block = GridBlock(
+        data=np.arange(9, dtype=float).reshape(3, 3),
+        axes=("y", "x"),
+        origin=(0.0, 0.0),
+        spacing=(0.5, 0.5),
+    )
+    slice_data = SliceData(
+        field=FieldInfo(name="rho"),
+        iteration=0,
+        time=0.0,
+        plane="xy",
+        blocks=(block,),
+    )
+
+    result = plot_scalar_slice(
+        slice_data,
+        output=tmp_path / "slice_labels.png",
+        labels=PlotLabels(
+            title="Custom slice",
+            xlabel="Radius",
+            ylabel="Height",
+            colorbar="Density",
+        ),
+    )
+
+    assert result.axes.get_title() == "Custom slice"
+    assert result.axes.get_xlabel() == "Radius"
+    assert result.axes.get_ylabel() == "Height"
+    assert result.figure.axes[-1].get_ylabel() == "Density"
 
 
 def test_plot_scalar_slice_defaults_axis_ranges_to_coarsest_level(tmp_path: Path) -> None:

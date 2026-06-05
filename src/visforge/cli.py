@@ -8,6 +8,7 @@ from typing import Any
 
 from visforge.config import bool_value, load_config, range_value, section
 from visforge.data.model import PlaneSpec
+from visforge.plotting.base import PlotLabels
 from visforge.plotting.style import DEFAULT_CMAP, normalize_colormap
 from visforge.workflows.inspect import format_summary, inspect_dataset
 from visforge.workflows.line_plot import make_line_plot
@@ -35,6 +36,15 @@ def _build_parser() -> argparse.ArgumentParser:
     line_parser.add_argument("--axis", required=True, choices=("x", "y", "z"))
     line_parser.add_argument("--iteration", type=int)
     line_parser.add_argument("--backend", default="tsv", choices=("auto", "tsv"))
+    line_parser.add_argument("--title", help="Override the plot title")
+    line_parser.add_argument("--xlabel", help="Override the x-axis label")
+    line_parser.add_argument("--ylabel", help="Override the y-axis label")
+    line_parser.add_argument(
+        "--legend-label",
+        "--legend",
+        dest="legend_label",
+        help="Show a legend using this series label",
+    )
     line_parser.add_argument("--output", required=True, type=Path)
     line_parser.set_defaults(func=_plot_line)
 
@@ -125,6 +135,15 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     slice_parser.add_argument("--vmin", type=float, help="Minimum scalar value for the color range")
     slice_parser.add_argument("--vmax", type=float, help="Maximum scalar value for the color range")
+    slice_parser.add_argument("--title", help="Override the plot title")
+    slice_parser.add_argument("--xlabel", help="Override the x-axis label")
+    slice_parser.add_argument("--ylabel", help="Override the y-axis label")
+    slice_parser.add_argument(
+        "--colorbar-label",
+        "--colorbar",
+        dest="colorbar_label",
+        help="Override the scalar colorbar label",
+    )
     slice_parser.add_argument(
         "--cmap",
         help="Matplotlib colormap name for scalar values",
@@ -153,6 +172,12 @@ def _plot_line(args: argparse.Namespace) -> int:
             iteration=args.iteration,
             backend=args.backend,
             output=args.output,
+            labels=_plot_labels(
+                title=args.title,
+                xlabel=args.xlabel,
+                ylabel=args.ylabel,
+                legend=args.legend_label,
+            ),
         )
     except (FileNotFoundError, ValueError) as exc:
         raise SystemExit(str(exc)) from None
@@ -183,6 +208,7 @@ def _plot_slice(args: argparse.Namespace) -> int:
             scale=options["scale"],
             vmin=options["vmin"],
             vmax=options["vmax"],
+            labels=options["labels"],
         )
     except (FileNotFoundError, ValueError) as exc:
         raise SystemExit(str(exc)) from None
@@ -196,6 +222,7 @@ def _slice_options(args: argparse.Namespace) -> dict[str, object]:
     mesh = section(config, "mesh")
     view = section(config, "view")
     sample = section(config, "sample_plane")
+    labels = section(config, "labels")
 
     options = {
         "path": args.path or config.get("dataset") or plot.get("dataset"),
@@ -217,6 +244,12 @@ def _slice_options(args: argparse.Namespace) -> dict[str, object]:
         "scale": _choose(args.scale, plot.get("scale"), "linear"),
         "vmin": _choose(args.vmin, plot.get("vmin")),
         "vmax": _choose(args.vmax, plot.get("vmax")),
+        "labels": _plot_labels(
+            title=_choose(args.title, labels.get("title")),
+            xlabel=_choose(args.xlabel, labels.get("xlabel")),
+            ylabel=_choose(args.ylabel, labels.get("ylabel")),
+            colorbar=_choose(args.colorbar_label, labels.get("colorbar")),
+        ),
     }
     missing = [name for name in ("path", "field", "output") if options[name] is None]
     if missing:
@@ -250,6 +283,19 @@ def _range_tuple(values: list[float] | None) -> tuple[float, float] | None:
         return None
     start, stop = values
     return start, stop
+
+
+def _plot_labels(
+    *,
+    title: str | None = None,
+    xlabel: str | None = None,
+    ylabel: str | None = None,
+    legend: str | None = None,
+    colorbar: str | None = None,
+) -> PlotLabels | None:
+    if all(value is None for value in (title, xlabel, ylabel, legend, colorbar)):
+        return None
+    return PlotLabels(title=title, xlabel=xlabel, ylabel=ylabel, legend=legend, colorbar=colorbar)
 
 
 def _sample_plane(args: argparse.Namespace, config: dict[str, Any]) -> PlaneSpec | None:

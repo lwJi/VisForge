@@ -6,6 +6,7 @@ import pytest
 
 from visforge.data.model import PlaneSpec
 from visforge.cli import _build_parser, _slice_options
+from visforge.plotting.base import PlotLabels
 
 
 def test_plot_slice_mesh_defaults() -> None:
@@ -132,6 +133,65 @@ def test_plot_slice_colormap_option() -> None:
     assert options["cmap"] == "plasma"
 
 
+def test_plot_line_label_options() -> None:
+    parser = _build_parser()
+    args = parser.parse_args(
+        [
+            "plot-line",
+            "dataset",
+            "--field",
+            "gfc",
+            "--axis",
+            "x",
+            "--title",
+            "Line title",
+            "--xlabel",
+            "Radius",
+            "--ylabel",
+            "Density",
+            "--legend",
+            "gfc",
+            "--output",
+            "gfc.png",
+        ]
+    )
+
+    assert args.title == "Line title"
+    assert args.xlabel == "Radius"
+    assert args.ylabel == "Density"
+    assert args.legend_label == "gfc"
+
+
+def test_plot_slice_label_options() -> None:
+    parser = _build_parser()
+    args = parser.parse_args(
+        [
+            "plot-slice",
+            "dataset",
+            "--field",
+            "gfc",
+            "--title",
+            "Slice title",
+            "--xlabel",
+            "Radius",
+            "--ylabel",
+            "Height",
+            "--colorbar",
+            "Density",
+            "--output",
+            "gfc.png",
+        ]
+    )
+    options = _slice_options(args)
+
+    assert options["labels"] == PlotLabels(
+        title="Slice title",
+        xlabel="Radius",
+        ylabel="Height",
+        colorbar="Density",
+    )
+
+
 def test_plot_slice_rejects_unknown_colormap() -> None:
     parser = _build_parser()
     args = parser.parse_args(
@@ -173,6 +233,11 @@ mesh:
 view:
   xlim: [-4, 4]
   ylim: [-3, 3]
+labels:
+  title: Density slice
+  xlabel: Radius
+  ylabel: Height
+  colorbar: Density
 """,
         encoding="utf-8",
     )
@@ -194,6 +259,12 @@ view:
     assert options["vmax"] == 1.0
     assert options["xlim"] == (-4.0, 4.0)
     assert options["ylim"] == (-3.0, 3.0)
+    assert options["labels"] == PlotLabels(
+        title="Density slice",
+        xlabel="Radius",
+        ylabel="Height",
+        colorbar="Density",
+    )
 
 
 def test_plot_slice_config_file_supplies_scale(tmp_path) -> None:
@@ -224,6 +295,9 @@ plot:
   output: gfc.png
 view:
   xlim: [-4, 4]
+labels:
+  title: Config title
+  xlabel: Config x
 """,
         encoding="utf-8",
     )
@@ -235,6 +309,8 @@ view:
             str(config),
             "--field",
             "gfv",
+            "--title",
+            "CLI title",
             "--xlim",
             "-1",
             "1",
@@ -243,6 +319,7 @@ view:
     options = _slice_options(args)
     assert options["field"] == "gfv"
     assert options["xlim"] == (-1.0, 1.0)
+    assert options["labels"] == PlotLabels(title="CLI title", xlabel="Config x")
 
 
 def test_plot_slice_config_file_supplies_sample_plane(tmp_path) -> None:

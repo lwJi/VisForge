@@ -12,6 +12,12 @@ view:
   xlim: [-4, 4]
   ylim: [-4, 4]
 
+labels:
+  title: gfc on xz plane
+  xlabel: x
+  ylabel: z
+  colorbar: gfc
+
 mesh:
   show: true
   color: white
