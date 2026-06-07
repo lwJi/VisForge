@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import pytest
+from PIL import Image
 
 from visforge.data.model import FieldInfo, LineData
 from visforge.plotting.base import PlotLabels
@@ -22,6 +24,22 @@ def test_plot_line_writes_png(tmp_path: Path) -> None:
     result = plot_line(line, output=output)
     assert result.output == output.resolve()
     assert output.stat().st_size > 0
+
+
+def test_plot_line_writes_custom_dpi(tmp_path: Path) -> None:
+    line = LineData(
+        field=FieldInfo(name="rho"),
+        iteration=0,
+        time=0.0,
+        axis="x",
+        coordinate=np.array([0.0, 1.0, 2.0]),
+        values=np.array([1.0, 3.0, 2.0]),
+    )
+    output = tmp_path / "line_dpi.png"
+    plot_line(line, output=output, dpi=240)
+
+    with Image.open(output) as image:
+        assert image.info["dpi"] == pytest.approx((240, 240), abs=1)
 
 
 def test_plot_line_applies_label_overrides(tmp_path: Path) -> None:

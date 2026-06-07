@@ -9,7 +9,7 @@ import numpy as np
 
 from visforge.data.model import GridBlock, SliceData
 from visforge.plotting.base import PlotLabels, PlotResult, format_title_template
-from visforge.plotting.output import save_figure
+from visforge.plotting.output import DEFAULT_DPI, save_figure
 from visforge.plotting.style import (
     DEFAULT_CMAP,
     DEFAULT_FIGSIZE,
@@ -41,6 +41,7 @@ def plot_scalar_slice(
     mesh_max_lines: int | None = None,
     xlim: tuple[float, float] | None = None,
     ylim: tuple[float, float] | None = None,
+    dpi: int = DEFAULT_DPI,
 ) -> PlotResult:
     """Plot one or more blocks from a scalar 2D slice."""
 
@@ -104,7 +105,7 @@ def plot_scalar_slice(
         label=labels.colorbar or field_label(data.field.name, data.field.units),
     )
 
-    saved = save_figure(figure, output)
+    saved = save_figure(figure, output, dpi=dpi)
     return PlotResult(figure=figure, axes=axes, output=saved)
 
 

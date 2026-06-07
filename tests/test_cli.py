@@ -29,6 +29,7 @@ def test_plot_slice_mesh_defaults() -> None:
     assert options["scale"] == "linear"
     assert options["vmin"] is None
     assert options["vmax"] is None
+    assert options["dpi"] == 160
     assert args.xlim is None
     assert args.ylim is None
 
@@ -162,6 +163,26 @@ def test_plot_line_label_options() -> None:
     assert args.legend_label == "gfc"
 
 
+def test_plot_line_dpi_option() -> None:
+    parser = _build_parser()
+    args = parser.parse_args(
+        [
+            "plot-line",
+            "dataset",
+            "--field",
+            "gfc",
+            "--axis",
+            "x",
+            "--dpi",
+            "240",
+            "--output",
+            "gfc.png",
+        ]
+    )
+
+    assert args.dpi == 240
+
+
 def test_plot_slice_label_options() -> None:
     parser = _build_parser()
     args = parser.parse_args(
@@ -222,6 +243,7 @@ plot:
   plane: xz
   backend: openpmd
   cmap: cividis
+  dpi: 220
   vmin: -1
   vmax: 1
   output: gfc.png
@@ -251,6 +273,7 @@ labels:
     assert options["plane"] == "xz"
     assert options["backend"] == "openpmd"
     assert options["cmap"] == "cividis"
+    assert options["dpi"] == 220
     assert options["show_mesh"] is True
     assert options["mesh_color"] == "cyan"
     assert options["mesh_linewidth"] == 0.2
@@ -283,6 +306,42 @@ plot:
     args = parser.parse_args(["plot-slice", "--config", str(config)])
     options = _slice_options(args)
     assert options["scale"] == "log"
+
+
+def test_plot_slice_cli_dpi_overrides_config(tmp_path) -> None:
+    config = tmp_path / "plot.yaml"
+    config.write_text(
+        """
+dataset: /data/run
+plot:
+  field: rho
+  dpi: 180
+  output: rho.png
+""",
+        encoding="utf-8",
+    )
+    parser = _build_parser()
+    args = parser.parse_args(["plot-slice", "--config", str(config), "--dpi", "300"])
+    options = _slice_options(args)
+    assert options["dpi"] == 300
+
+
+def test_plot_slice_rejects_nonpositive_config_dpi(tmp_path) -> None:
+    config = tmp_path / "plot.yaml"
+    config.write_text(
+        """
+dataset: /data/run
+plot:
+  field: rho
+  dpi: 0
+  output: rho.png
+""",
+        encoding="utf-8",
+    )
+    parser = _build_parser()
+    args = parser.parse_args(["plot-slice", "--config", str(config)])
+    with pytest.raises(ValueError, match="plot.dpi must be a positive integer"):
+        _slice_options(args)
 
 
 def test_plot_slice_cli_overrides_config(tmp_path) -> None:

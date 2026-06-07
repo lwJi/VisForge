@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from PIL import Image
 
 from visforge.data.model import FieldInfo, GridBlock, SliceData
 from visforge.plotting.base import PlotLabels
@@ -37,6 +38,27 @@ def test_plot_scalar_slice_writes_png(tmp_path: Path) -> None:
     assert result.axes.get_xlabel() == r"$x$"
     assert result.axes.get_ylabel() == r"$y$"
     assert result.axes.get_aspect() == 1.0
+
+
+def test_plot_scalar_slice_writes_custom_dpi(tmp_path: Path) -> None:
+    block = GridBlock(
+        data=np.arange(9, dtype=float).reshape(3, 3),
+        axes=("y", "x"),
+        origin=(0.0, 0.0),
+        spacing=(0.5, 0.5),
+    )
+    slice_data = SliceData(
+        field=FieldInfo(name="rho"),
+        iteration=0,
+        time=0.0,
+        plane="xy",
+        blocks=(block,),
+    )
+    output = tmp_path / "slice_dpi.png"
+    plot_scalar_slice(slice_data, output=output, dpi=240)
+
+    with Image.open(output) as image:
+        assert image.info["dpi"] == pytest.approx((240, 240), abs=1)
 
 
 def test_plot_scalar_slice_applies_axis_ranges(tmp_path: Path) -> None:

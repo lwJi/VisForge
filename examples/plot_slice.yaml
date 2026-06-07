@@ -6,6 +6,7 @@ plot:
   plane: xz
   backend: openpmd
   cmap: cividis
+  dpi: 240
   output: gfc.png
 
 view:

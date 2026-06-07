@@ -8,6 +8,7 @@ from visforge.data.registry import open_dataset
 from visforge.data.model import PlaneSpec
 from visforge.data.plane import sample_field_on_plane
 from visforge.plotting.base import PlotLabels, PlotResult
+from visforge.plotting.output import DEFAULT_DPI
 from visforge.plotting.scalar import plot_scalar_slice
 from visforge.plotting.style import DEFAULT_CMAP
 
@@ -34,6 +35,7 @@ def make_slice_plot(
     vmin: float | None = None,
     vmax: float | None = None,
     labels: PlotLabels | None = None,
+    dpi: int = DEFAULT_DPI,
 ) -> PlotResult:
     if plane is not None and sample_plane is not None:
         raise ValueError("Use either an axis-aligned plane or sample_plane, not both.")
@@ -58,4 +60,5 @@ def make_slice_plot(
         vmin=vmin,
         vmax=vmax,
         labels=labels,
+        dpi=dpi,
     )

@@ -7,6 +7,7 @@ from pathlib import Path
 from visforge.data.registry import open_dataset
 from visforge.plotting.base import PlotLabels, PlotResult
 from visforge.plotting.line import plot_line
+from visforge.plotting.output import DEFAULT_DPI
 
 
 def make_line_plot(
@@ -18,7 +19,8 @@ def make_line_plot(
     backend: str = "tsv",
     output: str | Path | None = None,
     labels: PlotLabels | None = None,
+    dpi: int = DEFAULT_DPI,
 ) -> PlotResult:
     dataset = open_dataset(path, backend=backend)
     line = dataset.read_line(field, iteration=iteration, axis=axis)
-    return plot_line(line, output=output, labels=labels)
+    return plot_line(line, output=output, labels=labels, dpi=dpi)

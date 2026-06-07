@@ -9,6 +9,7 @@ from typing import Any
 from visforge.config import bool_value, load_config, range_value, section
 from visforge.data.model import PlaneSpec
 from visforge.plotting.base import PlotLabels
+from visforge.plotting.output import DEFAULT_DPI
 from visforge.plotting.style import DEFAULT_CMAP, normalize_colormap
 from visforge.workflows.inspect import format_summary, inspect_dataset
 from visforge.workflows.line_plot import make_line_plot
@@ -46,6 +47,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Show a legend using this series label",
     )
     line_parser.add_argument("--output", required=True, type=Path)
+    line_parser.add_argument("--dpi", type=_positive_int, help=f"Output image DPI (default: {DEFAULT_DPI})")
     line_parser.set_defaults(func=_plot_line)
 
     slice_parser = subparsers.add_parser("plot-slice", help="Plot an openPMD scalar slice")
@@ -154,6 +156,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Color normalization scale for scalar values",
     )
     slice_parser.add_argument("--output", type=Path)
+    slice_parser.add_argument("--dpi", type=_positive_int, help=f"Output image DPI (default: {DEFAULT_DPI})")
     slice_parser.set_defaults(func=_plot_slice)
     return parser
 
@@ -178,6 +181,7 @@ def _plot_line(args: argparse.Namespace) -> int:
                 ylabel=args.ylabel,
                 legend=args.legend_label,
             ),
+            dpi=args.dpi or DEFAULT_DPI,
         )
     except (FileNotFoundError, ValueError) as exc:
         raise SystemExit(str(exc)) from None
@@ -209,6 +213,7 @@ def _plot_slice(args: argparse.Namespace) -> int:
             vmin=options["vmin"],
             vmax=options["vmax"],
             labels=options["labels"],
+            dpi=options["dpi"],
         )
     except (FileNotFoundError, ValueError) as exc:
         raise SystemExit(str(exc)) from None
@@ -244,6 +249,7 @@ def _slice_options(args: argparse.Namespace) -> dict[str, object]:
         "scale": _choose(args.scale, plot.get("scale"), "linear"),
         "vmin": _choose(args.vmin, plot.get("vmin")),
         "vmax": _choose(args.vmax, plot.get("vmax")),
+        "dpi": _dpi_value(_choose(args.dpi, plot.get("dpi"), DEFAULT_DPI)),
         "labels": _plot_labels(
             title=_choose(args.title, labels.get("title")),
             xlabel=_choose(args.xlabel, labels.get("xlabel")),
@@ -358,6 +364,20 @@ def _int_tuple(values: Any, length: int) -> tuple[int, ...] | None:
     if not isinstance(values, (list, tuple)) or len(values) != length:
         raise ValueError(f"Expected {length} integer values.")
     return tuple(int(value) for value in values)
+
+
+def _positive_int(value: Any) -> int:
+    number = int(value)
+    if number <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return number
+
+
+def _dpi_value(value: Any) -> int:
+    number = int(value)
+    if number <= 0:
+        raise ValueError("plot.dpi must be a positive integer.")
+    return number
 
 
 if __name__ == "__main__":  # pragma: no cover

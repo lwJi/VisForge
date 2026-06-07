@@ -59,6 +59,7 @@ $HOME/Misc/venv/py3/bin/visforge plot-slice /Users/liwei/docker-workspace/data/T
   --mesh-alpha 0.75 \
   --xlim -4 4 \
   --ylim -4 4 \
+  --dpi 240 \
   --output gfc_xy_mesh.png
 ```
 

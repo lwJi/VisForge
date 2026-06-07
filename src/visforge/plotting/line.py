@@ -7,7 +7,7 @@ from pathlib import Path
 
 from visforge.data.model import LineData
 from visforge.plotting.base import PlotLabels, PlotResult, format_title_template
-from visforge.plotting.output import save_figure
+from visforge.plotting.output import DEFAULT_DPI, save_figure
 from visforge.plotting.style import (
     LINE_FIGSIZE,
     axis_label,
@@ -23,6 +23,7 @@ def plot_line(
     labels: PlotLabels | None = None,
     title: str | None = None,
     color: str = "tab:blue",
+    dpi: int = DEFAULT_DPI,
 ) -> PlotResult:
     """Plot a scalar line output."""
 
@@ -39,7 +40,7 @@ def plot_line(
     if labels.legend is not None:
         axes.legend()
 
-    saved = save_figure(figure, output)
+    saved = save_figure(figure, output, dpi=dpi)
     return PlotResult(figure=figure, axes=axes, output=saved)
 
 
