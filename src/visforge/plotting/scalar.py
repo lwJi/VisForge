@@ -138,6 +138,12 @@ def _valid_data_and_extent(block: GridBlock) -> tuple[np.ndarray, tuple[float, f
     )
     if data.size == 0:
         return data, extent
+    data = _mask_covered_extents(
+        block,
+        data,
+        x_slice=x_slice,
+        y_slice=y_slice,
+    )
     return data, _clip_extent(cropped_extent, extent)
 
 
@@ -296,10 +302,50 @@ def _clamp_alpha(alpha: float) -> float:
 
 
 def _mesh_extent(block: GridBlock) -> tuple[float, float, float, float]:
-    extent = block.metadata.get("refinement_extent")
+    extent = block.metadata.get("amr_extent") or block.metadata.get("refinement_extent")
     if extent is None:
         return _extent(block)
     return tuple(float(value) for value in extent)
+
+
+def _mask_covered_extents(
+    block: GridBlock,
+    data: np.ndarray,
+    *,
+    x_slice: slice,
+    y_slice: slice,
+) -> np.ndarray:
+    covered_extents = _covered_extents(block)
+    if not covered_extents:
+        return data
+
+    y0, x0 = block.origin
+    dy, dx = block.spacing
+    y_position, x_position = _grid_position(block)
+    x_start = x_slice.start or 0
+    x_stop = x_slice.stop if x_slice.stop is not None else x_start + data.shape[1]
+    y_start = y_slice.start or 0
+    y_stop = y_slice.stop if y_slice.stop is not None else y_start + data.shape[0]
+    xs = x0 + (np.arange(x_start, x_stop, dtype=float) + x_position) * dx
+    ys = y0 + (np.arange(y_start, y_stop, dtype=float) + y_position) * dy
+    xx, yy = np.meshgrid(xs, ys, indexing="xy")
+
+    covered = np.zeros(data.shape, dtype=bool)
+    for ex0, ex1, ey0, ey1 in covered_extents:
+        covered |= (xx >= ex0) & (xx <= ex1) & (yy >= ey0) & (yy <= ey1)
+    if not np.any(covered):
+        return data
+
+    masked = np.array(data, dtype=float, copy=True)
+    masked[covered] = np.nan
+    return masked
+
+
+def _covered_extents(block: GridBlock) -> tuple[tuple[float, float, float, float], ...]:
+    extents = block.metadata.get("covered_extents")
+    if not extents:
+        return ()
+    return tuple(tuple(float(value) for value in extent) for extent in extents)
 
 
 def _mesh_line_positions(

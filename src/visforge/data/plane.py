@@ -151,16 +151,12 @@ def _grid_point_origin(block: GridBlock, spacing: NDArray[np.float64]) -> NDArra
 
 
 def _refinement_mask(block: GridBlock, points: NDArray[np.float64]) -> NDArray[np.bool_]:
-    bounds = block.metadata.get("refinement_bounds")
-    if not bounds:
-        return np.ones(points.shape[0], dtype=bool)
     mask = np.ones(points.shape[0], dtype=bool)
-    for axis, index in AXIS_INDEX.items():
-        if axis not in bounds:
-            continue
-        lower, upper = bounds[axis]
-        mask &= points[:, index] >= float(lower)
-        mask &= points[:, index] <= float(upper)
+    bounds = _valid_bounds(block)
+    if bounds:
+        mask &= _points_inside_bounds(points, bounds)
+    for covered_bounds in _covered_bounds(block):
+        mask &= ~_points_inside_bounds(points, covered_bounds)
     return mask
 
 
@@ -171,11 +167,11 @@ def _linear_refinement_stencil_mask(
     origin: NDArray[np.float64],
     spacing: NDArray[np.float64],
 ) -> NDArray[np.bool_]:
-    bounds = block.metadata.get("refinement_bounds")
-    if not bounds:
-        return np.ones(lower.shape[0], dtype=bool)
-
     mask = np.ones(lower.shape[0], dtype=bool)
+    bounds = _stencil_bounds(block)
+    if not bounds and not _covered_bounds(block):
+        return mask
+
     for dim, axis in enumerate(block.axes):
         if axis not in bounds:
             continue
@@ -184,6 +180,82 @@ def _linear_refinement_stencil_mask(
         upper_coordinate = origin[dim] + upper[:, dim] * spacing[dim]
         mask &= lower_coordinate >= float(lower_bound)
         mask &= upper_coordinate <= float(upper_bound)
+    for covered_bounds in _covered_bounds(block):
+        mask &= ~_stencil_intersects_bounds(
+            block,
+            lower,
+            upper,
+            origin,
+            spacing,
+            covered_bounds,
+        )
+    return mask
+
+
+def _valid_bounds(block: GridBlock) -> dict[str, tuple[float, float]]:
+    bounds = block.metadata.get("amr_bounds") or block.metadata.get("refinement_bounds")
+    if not bounds:
+        return {}
+    return {
+        str(axis): (float(axis_bounds[0]), float(axis_bounds[1]))
+        for axis, axis_bounds in bounds.items()
+    }
+
+
+def _stencil_bounds(block: GridBlock) -> dict[str, tuple[float, float]]:
+    bounds = block.metadata.get("amr_data_bounds")
+    if not bounds:
+        return _valid_bounds(block)
+    return {
+        str(axis): (float(axis_bounds[0]), float(axis_bounds[1]))
+        for axis, axis_bounds in bounds.items()
+    }
+
+
+def _covered_bounds(block: GridBlock) -> tuple[dict[str, tuple[float, float]], ...]:
+    covered = block.metadata.get("covered_bounds")
+    if not covered:
+        return ()
+    return tuple(
+        {
+            str(axis): (float(axis_bounds[0]), float(axis_bounds[1]))
+            for axis, axis_bounds in bounds.items()
+        }
+        for bounds in covered
+    )
+
+
+def _points_inside_bounds(
+    points: NDArray[np.float64],
+    bounds: dict[str, tuple[float, float]],
+) -> NDArray[np.bool_]:
+    mask = np.ones(points.shape[0], dtype=bool)
+    for axis, axis_bounds in bounds.items():
+        if axis not in AXIS_INDEX:
+            continue
+        lower, upper = axis_bounds
+        mask &= points[:, AXIS_INDEX[axis]] >= lower
+        mask &= points[:, AXIS_INDEX[axis]] <= upper
+    return mask
+
+
+def _stencil_intersects_bounds(
+    block: GridBlock,
+    lower: NDArray[np.integer[Any]],
+    upper: NDArray[np.integer[Any]],
+    origin: NDArray[np.float64],
+    spacing: NDArray[np.float64],
+    bounds: dict[str, tuple[float, float]],
+) -> NDArray[np.bool_]:
+    mask = np.ones(lower.shape[0], dtype=bool)
+    for dim, axis in enumerate(block.axes):
+        if axis not in bounds:
+            continue
+        lower_bound, upper_bound = bounds[axis]
+        lower_coordinate = origin[dim] + lower[:, dim] * spacing[dim]
+        upper_coordinate = origin[dim] + upper[:, dim] * spacing[dim]
+        mask &= upper_coordinate >= lower_bound
+        mask &= lower_coordinate <= upper_bound
     return mask
 
 

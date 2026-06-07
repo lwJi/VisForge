@@ -340,6 +340,29 @@ def test_valid_data_and_extent_crops_to_refinement_region() -> None:
     assert extent == (-1.0, 2.0, -1.0, 2.0)
 
 
+def test_valid_data_and_extent_masks_regions_covered_by_finer_boxes() -> None:
+    block = GridBlock(
+        data=np.arange(16, dtype=float).reshape(4, 4),
+        axes=("y", "x"),
+        origin=(0.0, 0.0),
+        spacing=(1.0, 1.0),
+        metadata={
+            "amr_extent": (0.0, 4.0, 0.0, 4.0),
+            "covered_extents": (
+                (0.0, 1.0, 0.0, 1.0),
+                (2.0, 3.0, 2.0, 3.0),
+            ),
+        },
+    )
+
+    data, extent = _valid_data_and_extent(block)
+
+    assert extent == (0.0, 4.0, 0.0, 4.0)
+    assert np.isnan(data[0, 0])
+    assert np.isnan(data[2, 2])
+    assert data[1, 2] == 6.0
+
+
 def test_color_limits_expand_constant_data() -> None:
     block = GridBlock(
         data=np.full((2, 2), 5.0, dtype=float),

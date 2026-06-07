@@ -169,6 +169,42 @@ def test_sample_field_on_plane_respects_refinement_bounds() -> None:
     )
 
 
+def test_sample_field_on_plane_masks_regions_covered_by_finer_boxes() -> None:
+    coarse = GridBlock(
+        data=np.full((1, 5, 5), 1.0, dtype=float),
+        axes=("z", "y", "x"),
+        origin=(-0.5, -2.0, -2.0),
+        spacing=(1.0, 1.0, 1.0),
+        level=0,
+        metadata={
+            "covered_bounds": (
+                {"x": (-2.1, -1.9), "y": (-2.1, -1.9), "z": (-0.1, 0.1)},
+                {"x": (1.9, 2.1), "y": (1.9, 2.1), "z": (-0.1, 0.1)},
+            )
+        },
+    )
+    field = FieldData(
+        field=FieldInfo(name="rho", dimensions=3),
+        iteration=0,
+        time=None,
+        blocks=(coarse,),
+    )
+    plane = PlaneSpec(
+        origin=(0.0, 0.0, 0.0),
+        normal=(0.0, 0.0, 1.0),
+        up=(0.0, 1.0, 0.0),
+        size=(5.0, 5.0),
+        resolution=(5, 5),
+        interpolation="nearest",
+    )
+
+    sampled = sample_field_on_plane(field, plane)
+
+    assert np.isnan(sampled.blocks[0].data[0, 0])
+    assert np.isnan(sampled.blocks[0].data[4, 4])
+    assert sampled.blocks[0].data[2, 2] == 1.0
+
+
 def test_sample_field_on_plane_linear_requires_valid_refined_stencil() -> None:
     z, y, x = np.meshgrid(
         -1.75 + 0.5 * np.arange(8, dtype=float),

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -18,14 +19,21 @@ except ImportError:  # pragma: no cover
     io = None
 
 PATCH_LEVEL_RE = re.compile(r"^(?P<base>.+)_patch(?P<patch>\d+)_lev(?P<level>\d+)$")
-BOXINBOX_RADIUS_RE = re.compile(r"BoxInBox::radius_(?P<region>\d+)\s*=\s*\[(?P<values>[^\]]+)\]")
-BOXINBOX_INDEXED_RADIUS_RE = re.compile(
-    r"BoxInBox::radius_(?P<region>\d+)\[(?P<index>\d+)\]\s*=\s*"
-    r"(?P<value>[+-]?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)"
-)
-CARPETX_BOUND_RE = re.compile(
-    r"CarpetX::(?P<axis>[xyz])(?P<side>min|max)\s*=\s*(?P<value>[+-]?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)"
-)
+
+
+@dataclass(frozen=True)
+class ChunkBox:
+    slices: tuple[slice, ...]
+    valid_slices: tuple[slice, ...]
+    patch: int | None = None
+    source_ids: tuple[int, ...] = ()
+
+
+@dataclass(frozen=True)
+class WrittenChunk:
+    offset: tuple[int, ...]
+    extent: tuple[int, ...]
+    source_id: int | None = None
 
 
 class OpenPMDBackend:
@@ -80,7 +88,6 @@ class OpenPMDBackend:
         series = io.Series(str(file.path), io.Access.read_only)
         try:
             opmd_iteration = _first_iteration(series)
-            refinement_radii, domain_bounds = _carpetx_metadata_from_iteration(opmd_iteration, file.path)
             time = _attribute(opmd_iteration, "time")
             blocks: list[GridBlock] = []
             selected_component: str | None = None
@@ -93,20 +100,20 @@ class OpenPMDBackend:
                 record_component = mesh[component_name]
                 array = np.asarray(record_component.load_chunk(), dtype=float)
                 series.flush()
-                block = _to_slice_block(
-                    array,
-                    mesh,
-                    record_component,
-                    mesh_name=mesh_name,
-                    requested_plane=plane or file.plane,
-                    refinement_radii=refinement_radii,
-                    domain_bounds=domain_bounds,
+                blocks.extend(
+                    _to_slice_blocks(
+                        array,
+                        mesh,
+                        record_component,
+                        mesh_name=mesh_name,
+                        requested_plane=plane or file.plane,
+                    )
                 )
-                blocks.append(block)
 
             if not blocks:
                 raise ValueError(f"Field {field!r} was not found in {file.path}")
 
+            annotated_blocks = _annotate_amr_coverage(tuple(blocks))
             inferred_plane = plane or file.plane or _plane_from_axes(blocks[0].axes)
             return SliceData(
                 field=FieldInfo(
@@ -118,7 +125,7 @@ class OpenPMDBackend:
                 iteration=file.iteration if file.iteration is not None else int(_first_iteration_key(series)),
                 time=float(time) if time is not None else None,
                 plane=inferred_plane,
-                blocks=tuple(blocks),
+                blocks=annotated_blocks,
                 metadata={"source": str(file.path)},
             )
         finally:
@@ -135,7 +142,6 @@ class OpenPMDBackend:
         series = io.Series(str(file.path), io.Access.read_only)
         try:
             opmd_iteration = _first_iteration(series)
-            refinement_radii, domain_bounds = _carpetx_metadata_from_iteration(opmd_iteration, file.path)
             time = _attribute(opmd_iteration, "time")
             blocks: list[GridBlock] = []
             selected_component: str | None = None
@@ -148,20 +154,19 @@ class OpenPMDBackend:
                 record_component = mesh[component_name]
                 array = np.asarray(record_component.load_chunk(), dtype=float)
                 series.flush()
-                blocks.append(
-                    _to_field_block(
+                blocks.extend(
+                    _to_field_blocks(
                         array,
                         mesh,
                         record_component,
                         mesh_name=mesh_name,
-                        refinement_radii=refinement_radii,
-                        domain_bounds=domain_bounds,
                     )
                 )
 
             if not blocks:
                 raise ValueError(f"Field {field!r} was not found in {file.path}")
 
+            annotated_blocks = _annotate_amr_coverage(tuple(blocks))
             return FieldData(
                 field=FieldInfo(
                     name=selected_component or field,
@@ -171,7 +176,7 @@ class OpenPMDBackend:
                 ),
                 iteration=file.iteration if file.iteration is not None else int(_first_iteration_key(series)),
                 time=float(time) if time is not None else None,
-                blocks=tuple(blocks),
+                blocks=annotated_blocks,
                 metadata={"source": str(file.path)},
             )
         finally:
@@ -290,6 +295,60 @@ def _matching_components(components: list[Any], name: str) -> list[str]:
     return [str(component) for component in components if str(component).endswith(f"_{name}")]
 
 
+def _to_slice_blocks(
+    array: np.ndarray,
+    mesh: Any,
+    record_component: Any | None = None,
+    *,
+    mesh_name: str,
+    requested_plane: str | None,
+) -> tuple[GridBlock, ...]:
+    axis_labels = tuple(str(axis) for axis in getattr(mesh, "axis_labels", ()))
+    spacing = tuple(float(value) for value in getattr(mesh, "grid_spacing", (1.0,) * array.ndim))
+    origin = tuple(float(value) for value in getattr(mesh, "grid_global_offset", (0.0,) * array.ndim))
+    grid_position = _component_position(record_component, array.ndim)
+    patch, level = _patch_and_level(mesh_name)
+    blocks: list[GridBlock] = []
+    for chunk_box in _chunk_boxes(record_component, array.shape):
+        chunk_array, chunk_origin = _slice_array(array, origin, spacing, chunk_box.slices)
+        valid_array, valid_origin = _slice_array(array, origin, spacing, chunk_box.valid_slices)
+        data, axes, block_origin, block_spacing, block_grid_position = _reduce_to_2d(
+            chunk_array,
+            axis_labels=axis_labels,
+            origin=chunk_origin,
+            spacing=spacing,
+            grid_position=grid_position,
+            requested_plane=requested_plane,
+        )
+        valid_data, _, valid_block_origin, _, _ = _reduce_to_2d(
+            valid_array,
+            axis_labels=axis_labels,
+            origin=valid_origin,
+            spacing=spacing,
+            grid_position=grid_position,
+            requested_plane=requested_plane,
+        )
+        metadata = {
+            "openpmd_mesh": mesh_name,
+            "grid_position": block_grid_position,
+            "amr_extent": _extent_from_block_values(valid_data, valid_block_origin, block_spacing),
+        }
+        if chunk_box.source_ids:
+            metadata["openpmd_source_ids"] = chunk_box.source_ids
+        blocks.append(
+            GridBlock(
+                data=data,
+                axes=axes,
+                origin=block_origin,
+                spacing=block_spacing,
+                patch=chunk_box.patch if chunk_box.patch is not None else patch,
+                level=level,
+                metadata=metadata,
+            )
+        )
+    return tuple(blocks)
+
+
 def _to_slice_block(
     array: np.ndarray,
     mesh: Any,
@@ -297,53 +356,23 @@ def _to_slice_block(
     *,
     mesh_name: str,
     requested_plane: str | None,
-    refinement_radii: tuple[float, ...],
-    domain_bounds: dict[str, tuple[float, float]],
 ) -> GridBlock:
-    axis_labels = tuple(str(axis) for axis in getattr(mesh, "axis_labels", ()))
-    spacing = tuple(float(value) for value in getattr(mesh, "grid_spacing", (1.0,) * array.ndim))
-    origin = tuple(float(value) for value in getattr(mesh, "grid_global_offset", (0.0,) * array.ndim))
-    grid_position = _component_position(record_component, array.ndim)
-
-    data, axes, block_origin, block_spacing, block_grid_position = _reduce_to_2d(
+    return _to_slice_blocks(
         array,
-        axis_labels=axis_labels,
-        origin=origin,
-        spacing=spacing,
-        grid_position=grid_position,
+        mesh,
+        record_component,
+        mesh_name=mesh_name,
         requested_plane=requested_plane,
-    )
-    patch, level = _patch_and_level(mesh_name)
-    metadata = {"openpmd_mesh": mesh_name, "grid_position": block_grid_position}
-    refinement_extent = _refinement_extent(
-        level=level,
-        axes=axes,
-        block_extent=_extent_from_block_values(data, block_origin, block_spacing),
-        radii=refinement_radii,
-        domain_bounds=domain_bounds,
-    )
-    if refinement_extent is not None:
-        metadata["refinement_extent"] = refinement_extent
-    return GridBlock(
-        data=data,
-        axes=axes,
-        origin=block_origin,
-        spacing=block_spacing,
-        patch=patch,
-        level=level,
-        metadata=metadata,
-    )
+    )[0]
 
 
-def _to_field_block(
+def _to_field_blocks(
     array: np.ndarray,
     mesh: Any,
     record_component: Any | None = None,
     *,
     mesh_name: str,
-    refinement_radii: tuple[float, ...],
-    domain_bounds: dict[str, tuple[float, float]],
-) -> GridBlock:
+) -> tuple[GridBlock, ...]:
     data = np.asarray(np.squeeze(array), dtype=float)
     if data.ndim != 3:
         raise ValueError(f"Expected 3D openPMD data for plane interpolation, got shape {array.shape}.")
@@ -356,27 +385,224 @@ def _to_field_block(
     origin = tuple(float(value) for value in getattr(mesh, "grid_global_offset", (0.0,) * data.ndim))
     grid_position = _component_position(record_component, data.ndim)
     patch, level = _patch_and_level(mesh_name)
-    metadata = {"openpmd_mesh": mesh_name, "grid_position": grid_position}
-    refinement_bounds = _refinement_bounds(
-        level=level,
-        axes=axes,
-        shape=data.shape,
-        origin=origin,
-        spacing=spacing,
-        radii=refinement_radii,
-        domain_bounds=domain_bounds,
+    blocks: list[GridBlock] = []
+    for chunk_box in _chunk_boxes(record_component, data.shape):
+        chunk_data, chunk_origin = _slice_array(data, origin, spacing, chunk_box.slices)
+        valid_data, valid_origin = _slice_array(data, origin, spacing, chunk_box.valid_slices)
+        metadata = {
+            "openpmd_mesh": mesh_name,
+            "grid_position": grid_position,
+            "amr_bounds": _bounds_from_block_values(
+                axes=axes,
+                shape=valid_data.shape,
+                origin=valid_origin,
+                spacing=spacing,
+            ),
+            "amr_data_bounds": _bounds_from_block_values(
+                axes=axes,
+                shape=chunk_data.shape,
+                origin=chunk_origin,
+                spacing=spacing,
+            ),
+        }
+        if chunk_box.source_ids:
+            metadata["openpmd_source_ids"] = chunk_box.source_ids
+        blocks.append(
+            GridBlock(
+                data=chunk_data,
+                axes=axes,
+                origin=chunk_origin,
+                spacing=spacing,
+                patch=chunk_box.patch if chunk_box.patch is not None else patch,
+                level=level,
+                metadata=metadata,
+            )
+        )
+    return tuple(blocks)
+
+
+def _to_field_block(
+    array: np.ndarray,
+    mesh: Any,
+    record_component: Any | None = None,
+    *,
+    mesh_name: str,
+) -> GridBlock:
+    return _to_field_blocks(
+        array,
+        mesh,
+        record_component,
+        mesh_name=mesh_name,
+    )[0]
+
+
+def _chunk_boxes(record_component: Any | None, shape: tuple[int, ...]) -> tuple[ChunkBox, ...]:
+    chunks = _available_chunks(record_component)
+    if not chunks:
+        slices = tuple(slice(0, size) for size in shape)
+        return (ChunkBox(slices, valid_slices=slices),)
+
+    components = _connected_chunk_components(chunks, shape)
+    boxes = [
+        _component_chunk_box(component, shape, patch=index)
+        for index, component in enumerate(components)
+    ]
+    return tuple(box for box in boxes if _slice_volume(box.slices) > 0) or (
+        ChunkBox(
+            tuple(slice(0, size) for size in shape),
+            valid_slices=tuple(slice(0, size) for size in shape),
+        ),
     )
-    if refinement_bounds is not None:
-        metadata["refinement_bounds"] = refinement_bounds
-    return GridBlock(
-        data=data,
-        axes=axes,
-        origin=origin,
-        spacing=spacing,
+
+
+def _available_chunks(record_component: Any | None) -> tuple[WrittenChunk, ...]:
+    if record_component is None:
+        return ()
+    try:
+        chunks = tuple(record_component.available_chunks())
+    except Exception:
+        return ()
+    written: list[WrittenChunk] = []
+    for chunk in chunks:
+        try:
+            offset = tuple(int(value) for value in getattr(chunk, "offset"))
+            extent = tuple(int(value) for value in getattr(chunk, "extent"))
+        except Exception:
+            continue
+        written.append(WrittenChunk(offset=offset, extent=extent, source_id=_chunk_source_id(chunk)))
+    return tuple(written)
+
+
+def _chunk_source_id(chunk: Any) -> int | None:
+    try:
+        return int(getattr(chunk, "source_id"))
+    except Exception:
+        return None
+
+
+def _connected_chunk_components(
+    chunks: tuple[WrittenChunk, ...],
+    shape: tuple[int, ...],
+) -> tuple[tuple[WrittenChunk, ...], ...]:
+    valid_chunks = tuple(
+        chunk
+        for chunk in chunks
+        if len(chunk.offset) == len(shape)
+        and len(chunk.extent) == len(shape)
+        and all(value > 0 for value in chunk.extent)
+    )
+    remaining = set(range(len(valid_chunks)))
+    components: list[tuple[WrittenChunk, ...]] = []
+    while remaining:
+        start = min(remaining)
+        remaining.remove(start)
+        component_indices = [start]
+        stack = [start]
+        while stack:
+            current = stack.pop()
+            connected = [
+                index
+                for index in tuple(remaining)
+                if _chunks_touch(valid_chunks[current], valid_chunks[index])
+            ]
+            for index in connected:
+                remaining.remove(index)
+                stack.append(index)
+                component_indices.append(index)
+        components.append(tuple(valid_chunks[index] for index in sorted(component_indices)))
+    return tuple(components)
+
+
+def _chunks_touch(left: WrittenChunk, right: WrittenChunk) -> bool:
+    touching_dimensions = 0
+    for dim in range(len(left.offset)):
+        left_start = left.offset[dim]
+        left_stop = left_start + left.extent[dim]
+        right_start = right.offset[dim]
+        right_stop = right_start + right.extent[dim]
+        if left_stop < right_start or right_stop < left_start:
+            return False
+        if left_stop == right_start or right_stop == left_start:
+            touching_dimensions += 1
+    return touching_dimensions <= 1
+
+
+def _chunks_overlap(left: WrittenChunk, right: WrittenChunk) -> bool:
+    for dim in range(len(left.offset)):
+        left_start = left.offset[dim]
+        left_stop = left_start + left.extent[dim]
+        right_start = right.offset[dim]
+        right_stop = right_start + right.extent[dim]
+        if left_stop <= right_start or right_stop <= left_start:
+            return False
+    return True
+
+
+def _component_chunk_box(
+    chunks: tuple[WrittenChunk, ...],
+    shape: tuple[int, ...],
+    *,
+    patch: int,
+) -> ChunkBox:
+    valid_slices = _chunk_group_slices(chunks, shape)
+    source_ids = tuple(sorted({chunk.source_id for chunk in chunks if chunk.source_id is not None}))
+    return ChunkBox(
+        slices=_expand_slices(valid_slices, shape, halo=1),
+        valid_slices=valid_slices,
         patch=patch,
-        level=level,
-        metadata=metadata,
+        source_ids=source_ids,
     )
+
+
+def _chunk_group_slices(
+    chunks: tuple[WrittenChunk, ...],
+    shape: tuple[int, ...],
+) -> tuple[slice, ...]:
+    starts = [min(chunk.offset[dim] for chunk in chunks) for dim in range(len(shape))]
+    stops = [
+        max(chunk.offset[dim] + chunk.extent[dim] for chunk in chunks)
+        for dim in range(len(shape))
+    ]
+    return tuple(
+        slice(max(0, start), min(shape[dim], stop))
+        for dim, (start, stop) in enumerate(zip(starts, stops))
+    )
+
+
+def _expand_slices(
+    slices: tuple[slice, ...],
+    shape: tuple[int, ...],
+    *,
+    halo: int,
+) -> tuple[slice, ...]:
+    return tuple(
+        slice(
+            max(0, int(item.start or 0) - halo),
+            min(shape[dim], int(item.stop or 0) + halo),
+        )
+        for dim, item in enumerate(slices)
+    )
+
+
+def _slice_volume(slices: tuple[slice, ...]) -> int:
+    volume = 1
+    for item in slices:
+        volume *= max(0, int(item.stop or 0) - int(item.start or 0))
+    return volume
+
+
+def _slice_array(
+    array: np.ndarray,
+    origin: tuple[float, ...],
+    spacing: tuple[float, ...],
+    slices: tuple[slice, ...],
+) -> tuple[np.ndarray, tuple[float, ...]]:
+    data = np.asarray(array[slices], dtype=float)
+    sliced_origin = tuple(
+        origin[dim] + spacing[dim] * float(item.start or 0)
+        for dim, item in enumerate(slices)
+    )
+    return data, sliced_origin
 
 
 def _reduce_to_2d(
@@ -451,33 +677,6 @@ def _patch_and_level(mesh_name: str) -> tuple[int | None, int | None]:
     return int(match.group("patch")), int(match.group("level"))
 
 
-def _carpetx_metadata_from_iteration(
-    opmd_iteration: Any,
-    source: Path,
-) -> tuple[tuple[float, ...], dict[str, tuple[float, float]]]:
-    parameters = _attribute(opmd_iteration, "AllParameters")
-    if not isinstance(parameters, str) or not parameters.strip():
-        raise ValueError(f"openPMD file {source} does not contain required AllParameters metadata.")
-    return _parse_boxinbox_radii(parameters), _parse_carpetx_domain_bounds(parameters)
-
-
-def _parse_boxinbox_radii(parameters: str) -> tuple[float, ...]:
-    indexed: dict[int, dict[int, float]] = {}
-    for match in BOXINBOX_INDEXED_RADIUS_RE.finditer(parameters):
-        region = int(match.group("region"))
-        index = int(match.group("index"))
-        indexed.setdefault(region, {})[index] = float(match.group("value"))
-    if indexed:
-        region = min(indexed)
-        values = indexed[region]
-        return tuple(values[index] for index in sorted(values))
-
-    match = BOXINBOX_RADIUS_RE.search(parameters)
-    if match is None:
-        return ()
-    return tuple(float(value.strip()) for value in match.group("values").split(","))
-
-
 def _extent_from_block_values(
     data: np.ndarray,
     origin: tuple[float, ...],
@@ -489,97 +688,129 @@ def _extent_from_block_values(
     return (x0, x0 + dx * x_count, y0, y0 + dy * y_count)
 
 
-def _refinement_extent(
+def _bounds_from_block_values(
     *,
-    level: int | None,
-    axes: tuple[str, ...],
-    block_extent: tuple[float, float, float, float],
-    radii: tuple[float, ...],
-    domain_bounds: dict[str, tuple[float, float]],
-) -> tuple[float, float, float, float] | None:
-    if level == 0 and domain_bounds and len(axes) == 2:
-        return _axis_bounds_extent(axes, block_extent, domain_bounds)
-    if level is None or level >= len(radii):
-        return None
-    radius = radii[level]
-    if radius <= 0:
-        return block_extent
-
-    x0, x1, y0, y1 = block_extent
-    axis_limits = {
-        "x": (-radius, radius),
-        "y": (-radius, radius),
-        "z": (-radius, radius),
-    }
-    if len(axes) != 2:
-        return None
-    y_axis, x_axis = axes
-    rx0, rx1 = axis_limits.get(x_axis, (x0, x1))
-    ry0, ry1 = axis_limits.get(y_axis, (y0, y1))
-    return max(x0, rx0), min(x1, rx1), max(y0, ry0), min(y1, ry1)
-
-
-def _refinement_bounds(
-    *,
-    level: int | None,
     axes: tuple[str, ...],
     shape: tuple[int, ...],
     origin: tuple[float, ...],
     spacing: tuple[float, ...],
-    radii: tuple[float, ...],
-    domain_bounds: dict[str, tuple[float, float]],
-) -> dict[str, tuple[float, float]] | None:
-    if len(axes) != 3:
-        return None
-    block_bounds = {
+) -> dict[str, tuple[float, float]]:
+    return {
         axis: (origin[index], origin[index] + spacing[index] * shape[index])
         for index, axis in enumerate(axes)
     }
-    if level == 0 and domain_bounds:
-        return {
-            axis: _clip_bounds(block_bounds[axis], domain_bounds.get(axis, block_bounds[axis]))
-            for axis in axes
-        }
-    if level is None or level >= len(radii):
+
+
+def _annotate_amr_coverage(blocks: tuple[GridBlock, ...]) -> tuple[GridBlock, ...]:
+    annotated: list[GridBlock] = []
+    for block in blocks:
+        if block.level is None:
+            annotated.append(block)
+            continue
+        if block.data.ndim == 2:
+            covered_extents = _finer_covered_extents(block, blocks)
+            if covered_extents:
+                annotated.append(
+                    replace(block, metadata={**block.metadata, "covered_extents": covered_extents})
+                )
+                continue
+        if block.data.ndim == 3:
+            covered_bounds = _finer_covered_bounds(block, blocks)
+            if covered_bounds:
+                annotated.append(
+                    replace(block, metadata={**block.metadata, "covered_bounds": covered_bounds})
+                )
+                continue
+        annotated.append(block)
+    return tuple(annotated)
+
+
+def _finer_covered_extents(
+    block: GridBlock,
+    blocks: tuple[GridBlock, ...],
+) -> tuple[tuple[float, float, float, float], ...]:
+    block_extent = _metadata_extent(block)
+    if block_extent is None:
+        return ()
+    covered: list[tuple[float, float, float, float]] = []
+    for candidate in blocks:
+        if candidate is block or candidate.data.ndim != 2:
+            continue
+        if candidate.level is None or candidate.level <= block.level:
+            continue
+        if candidate.axes != block.axes:
+            continue
+        candidate_extent = _metadata_extent(candidate)
+        if candidate_extent is None:
+            continue
+        overlap = _intersect_extent(block_extent, candidate_extent)
+        if overlap is not None:
+            covered.append(overlap)
+    return tuple(covered)
+
+
+def _metadata_extent(block: GridBlock) -> tuple[float, float, float, float] | None:
+    extent = block.metadata.get("amr_extent") or block.metadata.get("refinement_extent")
+    if extent is None:
         return None
-    radius = radii[level]
-    if radius <= 0:
-        target_bounds = {axis: block_bounds[axis] for axis in axes}
-    else:
-        target_bounds = {axis: (-radius, radius) for axis in axes}
+    return tuple(float(value) for value in extent)
+
+
+def _intersect_extent(
+    left: tuple[float, float, float, float],
+    right: tuple[float, float, float, float],
+) -> tuple[float, float, float, float] | None:
+    x0 = max(left[0], right[0])
+    x1 = min(left[1], right[1])
+    y0 = max(left[2], right[2])
+    y1 = min(left[3], right[3])
+    if x1 <= x0 or y1 <= y0:
+        return None
+    return x0, x1, y0, y1
+
+
+def _finer_covered_bounds(
+    block: GridBlock,
+    blocks: tuple[GridBlock, ...],
+) -> tuple[dict[str, tuple[float, float]], ...]:
+    block_bounds = _metadata_bounds(block)
+    if not block_bounds:
+        return ()
+    covered: list[dict[str, tuple[float, float]]] = []
+    for candidate in blocks:
+        if candidate is block or candidate.data.ndim != 3:
+            continue
+        if candidate.level is None or candidate.level <= block.level:
+            continue
+        candidate_bounds = _metadata_bounds(candidate)
+        overlap = _intersect_bounds(block_bounds, candidate_bounds)
+        if overlap:
+            covered.append(overlap)
+    return tuple(covered)
+
+
+def _metadata_bounds(block: GridBlock) -> dict[str, tuple[float, float]]:
+    bounds = block.metadata.get("amr_bounds") or block.metadata.get("refinement_bounds")
+    if not bounds:
+        return {}
     return {
-        axis: _clip_bounds(block_bounds[axis], target_bounds[axis])
-        for axis in axes
+        str(axis): (float(axis_bounds[0]), float(axis_bounds[1]))
+        for axis, axis_bounds in bounds.items()
     }
 
 
-def _clip_bounds(
-    block_bounds: tuple[float, float],
-    target_bounds: tuple[float, float],
-) -> tuple[float, float]:
-    return max(block_bounds[0], target_bounds[0]), min(block_bounds[1], target_bounds[1])
-
-
-def _axis_bounds_extent(
-    axes: tuple[str, ...],
-    block_extent: tuple[float, float, float, float],
-    bounds: dict[str, tuple[float, float]],
-) -> tuple[float, float, float, float]:
-    x0, x1, y0, y1 = block_extent
-    y_axis, x_axis = axes
-    bx0, bx1 = bounds.get(x_axis, (x0, x1))
-    by0, by1 = bounds.get(y_axis, (y0, y1))
-    return max(x0, bx0), min(x1, bx1), max(y0, by0), min(y1, by1)
-
-
-def _parse_carpetx_domain_bounds(parameters: str) -> dict[str, tuple[float, float]]:
-    values: dict[str, dict[str, float]] = {}
-    for match in CARPETX_BOUND_RE.finditer(parameters):
-        axis = match.group("axis")
-        side = match.group("side")
-        values.setdefault(axis, {})[side] = float(match.group("value"))
-    return {
-        axis: (sides["min"], sides["max"])
-        for axis, sides in values.items()
-        if "min" in sides and "max" in sides
-    }
+def _intersect_bounds(
+    left: dict[str, tuple[float, float]],
+    right: dict[str, tuple[float, float]],
+) -> dict[str, tuple[float, float]]:
+    if not left or not right or set(left) != set(right):
+        return {}
+    overlap: dict[str, tuple[float, float]] = {}
+    for axis, left_bounds in left.items():
+        right_bounds = right[axis]
+        lower = max(left_bounds[0], right_bounds[0])
+        upper = min(left_bounds[1], right_bounds[1])
+        if upper <= lower:
+            return {}
+        overlap[axis] = (lower, upper)
+    return overlap
