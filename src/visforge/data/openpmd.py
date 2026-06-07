@@ -312,7 +312,7 @@ def _to_slice_blocks(
     for chunk_box in _chunk_boxes(record_component, array.shape):
         chunk_array, chunk_origin = _slice_array(array, origin, spacing, chunk_box.slices)
         valid_array, valid_origin = _slice_array(array, origin, spacing, chunk_box.valid_slices)
-        data, axes, block_origin, block_spacing, block_grid_position = _reduce_to_2d(
+        data, axes, block_origin, block_spacing, block_grid_position, kept_dims = _reduce_to_2d(
             chunk_array,
             axis_labels=axis_labels,
             origin=chunk_origin,
@@ -320,7 +320,7 @@ def _to_slice_blocks(
             grid_position=grid_position,
             requested_plane=requested_plane,
         )
-        valid_data, _, valid_block_origin, _, _ = _reduce_to_2d(
+        valid_data, _, valid_block_origin, _, _, _ = _reduce_to_2d(
             valid_array,
             axis_labels=axis_labels,
             origin=valid_origin,
@@ -332,6 +332,11 @@ def _to_slice_blocks(
             "openpmd_mesh": mesh_name,
             "grid_position": block_grid_position,
             "amr_extent": _extent_from_block_values(valid_data, valid_block_origin, block_spacing),
+            "amr_valid_slices": _local_valid_slices(
+                chunk_box.slices,
+                chunk_box.valid_slices,
+                kept_dims=kept_dims,
+            ),
         }
         if chunk_box.source_ids:
             metadata["openpmd_source_ids"] = chunk_box.source_ids
@@ -613,7 +618,14 @@ def _reduce_to_2d(
     spacing: tuple[float, ...],
     grid_position: tuple[float, ...],
     requested_plane: str | None,
-) -> tuple[np.ndarray, tuple[str, ...], tuple[float, ...], tuple[float, ...], tuple[float, ...]]:
+) -> tuple[
+    np.ndarray,
+    tuple[str, ...],
+    tuple[float, ...],
+    tuple[float, ...],
+    tuple[float, ...],
+    tuple[int, ...],
+]:
     axes = axis_labels or tuple(f"axis{i}" for i in range(array.ndim))
     data = np.squeeze(array)
     if data.ndim == 2:
@@ -626,6 +638,7 @@ def _reduce_to_2d(
             tuple(origin[i] for i in kept),
             tuple(spacing[i] for i in kept),
             tuple(grid_position[i] for i in kept),
+            tuple(kept),
         )
 
     if array.ndim != 3:
@@ -642,6 +655,22 @@ def _reduce_to_2d(
         tuple(origin[i] for i in kept),
         tuple(spacing[i] for i in kept),
         tuple(grid_position[i] for i in kept),
+        tuple(kept),
+    )
+
+
+def _local_valid_slices(
+    data_slices: tuple[slice, ...],
+    valid_slices: tuple[slice, ...],
+    *,
+    kept_dims: tuple[int, ...],
+) -> tuple[tuple[int, int], ...]:
+    return tuple(
+        (
+            int(valid_slices[dim].start or 0) - int(data_slices[dim].start or 0),
+            int(valid_slices[dim].stop or 0) - int(data_slices[dim].start or 0),
+        )
+        for dim in kept_dims
     )
 
 

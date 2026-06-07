@@ -382,6 +382,31 @@ def test_valid_data_and_extent_can_keep_covered_regions_for_rendering() -> None:
     assert not np.isnan(data).any()
 
 
+def test_valid_data_and_extent_uses_explicit_valid_slices_before_extent_math() -> None:
+    values = np.full((5, 5), 999.0, dtype=float)
+    values[1:4, 1:4] = np.arange(9, dtype=float).reshape(3, 3)
+    block = GridBlock(
+        data=values,
+        axes=("y", "x"),
+        origin=(0.0, 0.0),
+        spacing=(1.0, 1.0),
+        metadata={
+            "grid_position": (0.0, 0.0),
+            "amr_extent": (1.0, 4.0, 1.0, 4.0),
+            "amr_valid_slices": ((1, 4), (1, 4)),
+        },
+    )
+
+    data, extent = _valid_data_and_extent(block, mask_covered=False)
+
+    assert extent == (1.0, 4.0, 1.0, 4.0)
+    assert data.tolist() == [
+        [0.0, 1.0, 2.0],
+        [3.0, 4.0, 5.0],
+        [6.0, 7.0, 8.0],
+    ]
+
+
 def test_color_limits_expand_constant_data() -> None:
     block = GridBlock(
         data=np.full((2, 2), 5.0, dtype=float),

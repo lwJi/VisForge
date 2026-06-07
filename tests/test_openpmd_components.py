@@ -118,6 +118,7 @@ def test_to_slice_blocks_split_chunk_source_boxes() -> None:
         [18.0, 19.0, 20.0, 21.0, 22.0],
     ]
     assert blocks[0].metadata["amr_extent"] == (-1.0, 5.0, -1.0, 1.0)
+    assert blocks[0].metadata["amr_valid_slices"] == ((1, 3), (1, 4))
     assert blocks[1].patch == 1
     assert blocks[1].origin == (1.0, 3.0)
     assert blocks[1].data.tolist() == [
@@ -126,6 +127,7 @@ def test_to_slice_blocks_split_chunk_source_boxes() -> None:
         [33.0, 34.0, 35.0],
     ]
     assert blocks[1].metadata["amr_extent"] == (5.0, 9.0, 2.0, 3.0)
+    assert blocks[1].metadata["amr_valid_slices"] == ((1, 2), (1, 3))
 
 
 def test_to_field_blocks_split_chunk_source_boxes() -> None:

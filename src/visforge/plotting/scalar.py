@@ -125,7 +125,11 @@ def _valid_data_and_extent(
     mask_covered: bool = True,
 ) -> tuple[np.ndarray, tuple[float, float, float, float]]:
     extent = _mesh_extent(block)
-    y_slice, x_slice = _extent_slices(block, extent)
+    explicit_slices = _valid_index_slices(block)
+    if explicit_slices is None:
+        y_slice, x_slice = _extent_slices(block, extent)
+    else:
+        y_slice, x_slice = explicit_slices
     data = np.asarray(block.data)[y_slice, x_slice]
     x0, _, y0, _ = extent
     dy, dx = block.spacing
@@ -149,7 +153,31 @@ def _valid_data_and_extent(
             x_slice=x_slice,
             y_slice=y_slice,
         )
+    if explicit_slices is not None:
+        return data, extent
     return data, _clip_extent(cropped_extent, extent)
+
+
+def _valid_index_slices(block: GridBlock) -> tuple[slice, slice] | None:
+    valid_slices = block.metadata.get("amr_valid_slices")
+    if valid_slices is None:
+        return None
+    if len(valid_slices) != 2:
+        raise ValueError("GridBlock amr_valid_slices must contain y and x slice bounds.")
+    y_count, x_count = block.data.shape
+    y_slice = _metadata_slice(valid_slices[0], y_count, "y")
+    x_slice = _metadata_slice(valid_slices[1], x_count, "x")
+    return y_slice, x_slice
+
+
+def _metadata_slice(bounds, count: int, axis: str) -> slice:
+    if len(bounds) != 2:
+        raise ValueError(f"GridBlock amr_valid_slices {axis} bounds must contain start and stop.")
+    start = int(bounds[0])
+    stop = int(bounds[1])
+    if start < 0 or stop < start or stop > count:
+        raise ValueError(f"GridBlock amr_valid_slices {axis} bounds are outside the block data.")
+    return slice(start, stop)
 
 
 def _extent_slices(
