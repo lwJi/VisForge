@@ -27,6 +27,10 @@ class FakeRecordComponent:
     position = (0.5, 0.5, 0.5)
 
 
+class FakeNodalRecordComponent:
+    position = (0.0, 0.0, 0.0)
+
+
 class FakeChunk:
     def __init__(self, offset, extent, source_id):
         self.offset = offset
@@ -75,6 +79,18 @@ def test_to_slice_block_records_amr_extent_from_mesh_geometry() -> None:
     assert block.metadata["amr_extent"] == (-3.0, 7.0, -2.0, 2.0)
 
 
+def test_to_slice_block_records_nodal_amr_extent_from_sample_coordinates() -> None:
+    block = _to_slice_block(
+        np.zeros((1, 4, 5), dtype=float),
+        FakeSliceMesh(),
+        FakeNodalRecordComponent(),
+        mesh_name="rho_patch3_lev2",
+        requested_plane="xy",
+    )
+
+    assert block.metadata["amr_extent"] == (-3.0, 5.0, -2.0, 1.0)
+
+
 def test_to_field_block_records_amr_bounds_from_mesh_geometry() -> None:
     block = _to_field_block(
         np.zeros((4, 5, 6), dtype=float),
@@ -87,6 +103,21 @@ def test_to_field_block_records_amr_bounds_from_mesh_geometry() -> None:
         "z": (-1.0, 1.0),
         "y": (-2.0, 3.0),
         "x": (-3.0, 9.0),
+    }
+
+
+def test_to_field_block_records_nodal_amr_bounds_from_sample_coordinates() -> None:
+    block = _to_field_block(
+        np.zeros((4, 5, 6), dtype=float),
+        FakeMesh(),
+        FakeNodalRecordComponent(),
+        mesh_name="rho_patch1_lev2",
+    )
+
+    assert block.metadata["amr_bounds"] == {
+        "z": (-1.0, 0.5),
+        "y": (-2.0, 2.0),
+        "x": (-3.0, 7.0),
     }
 
 

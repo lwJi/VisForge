@@ -331,7 +331,12 @@ def _to_slice_blocks(
         metadata = {
             "openpmd_mesh": mesh_name,
             "grid_position": block_grid_position,
-            "amr_extent": _extent_from_block_values(valid_data, valid_block_origin, block_spacing),
+            "amr_extent": _extent_from_block_values(
+                valid_data,
+                valid_block_origin,
+                block_spacing,
+                block_grid_position,
+            ),
             "amr_valid_slices": _local_valid_slices(
                 chunk_box.slices,
                 chunk_box.valid_slices,
@@ -402,12 +407,14 @@ def _to_field_blocks(
                 shape=valid_data.shape,
                 origin=valid_origin,
                 spacing=spacing,
+                grid_position=grid_position,
             ),
             "amr_data_bounds": _bounds_from_block_values(
                 axes=axes,
                 shape=chunk_data.shape,
                 origin=chunk_origin,
                 spacing=spacing,
+                grid_position=grid_position,
             ),
         }
         if chunk_box.source_ids:
@@ -710,11 +717,16 @@ def _extent_from_block_values(
     data: np.ndarray,
     origin: tuple[float, ...],
     spacing: tuple[float, ...],
+    grid_position: tuple[float, ...],
 ) -> tuple[float, float, float, float]:
     y_count, x_count = data.shape
     y0, x0 = origin
     dy, dx = spacing
-    return (x0, x0 + dx * x_count, y0, y0 + dy * y_count)
+    y_position, x_position = grid_position
+    return (
+        *_axis_bounds_from_block_values(x0, dx, x_count, x_position),
+        *_axis_bounds_from_block_values(y0, dy, y_count, y_position),
+    )
 
 
 def _bounds_from_block_values(
@@ -723,11 +735,33 @@ def _bounds_from_block_values(
     shape: tuple[int, ...],
     origin: tuple[float, ...],
     spacing: tuple[float, ...],
+    grid_position: tuple[float, ...],
 ) -> dict[str, tuple[float, float]]:
     return {
-        axis: (origin[index], origin[index] + spacing[index] * shape[index])
+        axis: _axis_bounds_from_block_values(
+            origin[index],
+            spacing[index],
+            shape[index],
+            grid_position[index],
+        )
         for index, axis in enumerate(axes)
     }
+
+
+def _axis_bounds_from_block_values(
+    origin: float,
+    spacing: float,
+    count: int,
+    position: float,
+) -> tuple[float, float]:
+    if count <= 0:
+        coordinate = origin + position * spacing
+        return coordinate, coordinate
+    first = origin + position * spacing
+    last = origin + (count - 1 + position) * spacing
+    if np.isclose(position, 0.0) or np.isclose(position, 1.0):
+        return first, last
+    return first - 0.5 * spacing, last + 0.5 * spacing
 
 
 def _annotate_amr_coverage(blocks: tuple[GridBlock, ...]) -> tuple[GridBlock, ...]:
