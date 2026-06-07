@@ -59,7 +59,7 @@ def plot_scalar_slice(
     norm = norm_class(vmin=limits[0], vmax=limits[1])
     block_extents: list[tuple[GridBlock, tuple[float, float, float, float]]] = []
     for block in plotted_blocks:
-        block_data, extent = _valid_data_and_extent(block)
+        block_data, extent = _valid_data_and_extent(block, mask_covered=False)
         if block_data.size == 0:
             continue
         block_extents.append((block, extent))
@@ -119,7 +119,11 @@ def _extent(block: GridBlock) -> tuple[float, float, float, float]:
     )
 
 
-def _valid_data_and_extent(block: GridBlock) -> tuple[np.ndarray, tuple[float, float, float, float]]:
+def _valid_data_and_extent(
+    block: GridBlock,
+    *,
+    mask_covered: bool = True,
+) -> tuple[np.ndarray, tuple[float, float, float, float]]:
     extent = _mesh_extent(block)
     y_slice, x_slice = _extent_slices(block, extent)
     data = np.asarray(block.data)[y_slice, x_slice]
@@ -138,12 +142,13 @@ def _valid_data_and_extent(block: GridBlock) -> tuple[np.ndarray, tuple[float, f
     )
     if data.size == 0:
         return data, extent
-    data = _mask_covered_extents(
-        block,
-        data,
-        x_slice=x_slice,
-        y_slice=y_slice,
-    )
+    if mask_covered:
+        data = _mask_covered_extents(
+            block,
+            data,
+            x_slice=x_slice,
+            y_slice=y_slice,
+        )
     return data, _clip_extent(cropped_extent, extent)
 
 

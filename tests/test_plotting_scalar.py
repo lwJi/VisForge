@@ -363,6 +363,25 @@ def test_valid_data_and_extent_masks_regions_covered_by_finer_boxes() -> None:
     assert data[1, 2] == 6.0
 
 
+def test_valid_data_and_extent_can_keep_covered_regions_for_rendering() -> None:
+    block = GridBlock(
+        data=np.arange(16, dtype=float).reshape(4, 4),
+        axes=("y", "x"),
+        origin=(0.0, 0.0),
+        spacing=(1.0, 1.0),
+        metadata={
+            "amr_extent": (0.0, 4.0, 0.0, 4.0),
+            "covered_extents": ((0.0, 1.0, 0.0, 1.0),),
+        },
+    )
+
+    data, extent = _valid_data_and_extent(block, mask_covered=False)
+
+    assert extent == (0.0, 4.0, 0.0, 4.0)
+    assert data[0, 0] == 0.0
+    assert not np.isnan(data).any()
+
+
 def test_color_limits_expand_constant_data() -> None:
     block = GridBlock(
         data=np.full((2, 2), 5.0, dtype=float),

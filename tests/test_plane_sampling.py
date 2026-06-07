@@ -261,6 +261,59 @@ def test_sample_field_on_plane_linear_requires_valid_refined_stencil() -> None:
     )
 
 
+def test_sample_field_on_plane_linear_fills_boundary_gaps_from_coarser_blocks() -> None:
+    x = np.arange(5, dtype=float)
+    z, y, x = np.meshgrid(x, x, x, indexing="ij")
+    coarse = GridBlock(
+        data=x + 10.0 * y + 100.0 * z,
+        axes=("z", "y", "x"),
+        origin=(0.0, 0.0, 0.0),
+        spacing=(1.0, 1.0, 1.0),
+        level=0,
+        metadata={
+            "covered_bounds": (
+                {
+                    "z": (0.0, 4.0),
+                    "y": (0.0, 4.0),
+                    "x": (2.0, 4.0),
+                },
+            )
+        },
+    )
+    fine = GridBlock(
+        data=np.full((3, 3, 3), 999.0, dtype=float),
+        axes=("z", "y", "x"),
+        origin=(0.0, 0.0, 2.0),
+        spacing=(1.0, 1.0, 1.0),
+        level=1,
+        metadata={
+            "amr_bounds": {
+                "z": (0.0, 2.0),
+                "y": (0.0, 2.0),
+                "x": (2.0, 4.0),
+            }
+        },
+    )
+    field = FieldData(
+        field=FieldInfo(name="rho", dimensions=3),
+        iteration=0,
+        time=None,
+        blocks=(coarse, fine),
+    )
+    plane = PlaneSpec(
+        origin=(1.5, 1.0, 1.0),
+        normal=(0.0, 0.0, 1.0),
+        up=(0.0, 1.0, 0.0),
+        size=(1.0, 1.0),
+        resolution=(1, 1),
+        interpolation="linear",
+    )
+
+    sampled = sample_field_on_plane(field, plane)
+
+    assert sampled.blocks[0].data[0, 0] == pytest.approx(111.5)
+
+
 def test_sample_field_on_plane_rejects_parallel_up_vector() -> None:
     field = FieldData(
         field=FieldInfo(name="rho", dimensions=3),

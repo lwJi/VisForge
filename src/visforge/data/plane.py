@@ -30,9 +30,25 @@ def sample_field_on_plane(field_data: FieldData, plane: PlaneSpec) -> SliceData:
     flat_points = points.reshape(-1, 3)
 
     values = np.full(flat_points.shape[0], np.nan, dtype=float)
-    for block in sorted(field_data.blocks, key=lambda item: (item.level or 0, item.patch or 0)):
+    blocks = tuple(sorted(field_data.blocks, key=lambda item: (item.level or 0, item.patch or 0)))
+    for block in blocks:
         block_values, mask = _sample_block(block, flat_points, interpolation=plane.interpolation)
         values[mask] = block_values[mask]
+    if plane.interpolation == "linear":
+        missing = ~np.isfinite(values)
+        if np.any(missing):
+            for block in blocks:
+                block_values, mask = _sample_block(
+                    block,
+                    flat_points,
+                    interpolation=plane.interpolation,
+                    reject_covered_stencils=False,
+                )
+                fill = missing & mask & np.isfinite(block_values)
+                values[fill] = block_values[fill]
+                missing[fill] = False
+                if not np.any(missing):
+                    break
 
     data = values.reshape(ny, nx)
     block = GridBlock(
@@ -104,6 +120,7 @@ def _sample_block(
     points: NDArray[np.float64],
     *,
     interpolation: str,
+    reject_covered_stencils: bool = True,
 ) -> tuple[NDArray[np.float64], NDArray[np.bool_]]:
     if block.data.ndim != 3 or len(block.axes) != 3:
         raise ValueError("User-defined plane interpolation requires 3D GridBlock data.")
@@ -125,6 +142,7 @@ def _sample_block(
             upper,
             origin,
             spacing,
+            reject_covered=reject_covered_stencils,
         )
     raise ValueError("sample_plane.interpolation must be 'linear' or 'nearest'.")
 
@@ -166,6 +184,8 @@ def _linear_refinement_stencil_mask(
     upper: NDArray[np.integer[Any]],
     origin: NDArray[np.float64],
     spacing: NDArray[np.float64],
+    *,
+    reject_covered: bool = True,
 ) -> NDArray[np.bool_]:
     mask = np.ones(lower.shape[0], dtype=bool)
     bounds = _stencil_bounds(block)
@@ -180,15 +200,16 @@ def _linear_refinement_stencil_mask(
         upper_coordinate = origin[dim] + upper[:, dim] * spacing[dim]
         mask &= lower_coordinate >= float(lower_bound)
         mask &= upper_coordinate <= float(upper_bound)
-    for covered_bounds in _covered_bounds(block):
-        mask &= ~_stencil_intersects_bounds(
-            block,
-            lower,
-            upper,
-            origin,
-            spacing,
-            covered_bounds,
-        )
+    if reject_covered:
+        for covered_bounds in _covered_bounds(block):
+            mask &= ~_stencil_intersects_bounds(
+                block,
+                lower,
+                upper,
+                origin,
+                spacing,
+                covered_bounds,
+            )
     return mask
 
 
